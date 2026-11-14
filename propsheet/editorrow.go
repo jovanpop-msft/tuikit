@@ -208,3 +208,10 @@ func (r *EditorRow) Paste(text string) {
 	r.notifyChanged(ver)
 }
 func (r *EditorRow) SelectAll() { r.ed.SelectAll() }
+
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess through the
+// editor, whose read-only flag carries both the page's gate and the form's.
+func (r *EditorRow) CanCopy() bool      { return r.ed.CanCopy() }
+func (r *EditorRow) CanCut() bool       { return r.ed.CanCut() }
+func (r *EditorRow) CanPaste() bool     { return r.ed.CanPaste() }
+func (r *EditorRow) CanSelectAll() bool { return r.ed.CanSelectAll() }

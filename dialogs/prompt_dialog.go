@@ -231,6 +231,17 @@ func (d *PromptDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	return true
 }
 
+// FocusClipboardTargetAt implements core.ClipboardFocuser: a right-click on the
+// value field focuses it, caret and selection untouched.
+func (d *PromptDialog) FocusClipboardTargetAt(x, y int) bool {
+	if !d.input.HitTest(x, y) {
+		return false
+	}
+	d.focus = promptFocusInput
+	d.syncFocus()
+	return true
+}
+
 // FocusedClipboardTarget implements core.ClipboardHost: the value field while
 // it has focus, nothing while a button does.
 func (d *PromptDialog) FocusedClipboardTarget() core.ClipboardTarget {

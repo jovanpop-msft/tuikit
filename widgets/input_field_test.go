@@ -481,3 +481,29 @@ func TestInputFieldSelectAllKeepsTheCaretVisible(t *testing.T) {
 		t.Errorf("caret column %d is outside [%d, %d)", col, f.scroll, f.scroll+f.Width())
 	}
 }
+
+// TestDisabledInputFieldRefusesClipboardEdits: a disabled field keeps its place
+// in a focus ring, so Ctrl+V and Ctrl+X can reach it; neither may change it.
+// Copy still works — the value is greyed, not hidden.
+func TestDisabledInputFieldRefusesClipboardEdits(t *testing.T) {
+	f := NewInputField("", 20, false)
+	f.SetValue("keep")
+	f.SetEnabled(false)
+	f.SelectAll()
+	f.Paste("x")
+	if got := f.Cut(); got != "" {
+		t.Errorf("Cut on a disabled field returned %q", got)
+	}
+	if f.Value() != "keep" {
+		t.Errorf("value = %q, want it unchanged", f.Value())
+	}
+	if !f.CanCopy() || f.CanCut() || f.CanPaste() {
+		t.Errorf("CanCopy=%v CanCut=%v CanPaste=%v, want true false false", f.CanCopy(), f.CanCut(), f.CanPaste())
+	}
+	pw := NewInputField("", 20, true)
+	pw.SetValue("s3cret")
+	pw.SelectAll()
+	if pw.CanCopy() || pw.CanCut() || !pw.CanPaste() {
+		t.Errorf("password: CanCopy=%v CanCut=%v CanPaste=%v, want false false true", pw.CanCopy(), pw.CanCut(), pw.CanPaste())
+	}
+}

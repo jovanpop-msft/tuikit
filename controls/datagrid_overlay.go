@@ -179,6 +179,14 @@ func (g *DataGrid) Paste(text string) {}
 
 func (g *DataGrid) SelectAll() { g.viewer.SelectAll() }
 
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess: only the open
+// viewer's selection is a clipboard selection (a host copying the cell under the
+// cursor without one does so itself), and nothing here is editable.
+func (g *DataGrid) CanCopy() bool      { return g.viewer.CanCopy() }
+func (g *DataGrid) CanCut() bool       { return false }
+func (g *DataGrid) CanPaste() bool     { return false }
+func (g *DataGrid) CanSelectAll() bool { return g.viewer.CanSelectAll() }
+
 // OverlayActive reports whether the context menu or the full-content popup is
 // showing. A host laying the grid out beside another focusable widget (e.g. an
 // Editor above a results grid) must give the grid exclusive first refusal of every

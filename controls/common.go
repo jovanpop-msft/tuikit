@@ -6,14 +6,18 @@ package controls
 // translate it, say) on the UI goroutine before the first Draw; nothing
 // dispatches on it. A grid reads Ready when created, Rows when a source
 // arrives and the menu entries when the menu opens; a ToolRow reads More on
-// every layout.
+// every layout; ClipboardMenuItems reads Cut, Copy, Paste and SelectAll (and
+// their shortcuts) each time it builds a menu.
 var Strings = struct {
 	Ready, Error                      string
 	Rows                              string // a grid's status once a source is set; %d is the row count
 	Copy, CopyAll, CopyAllWithHeaders string
-	ShowValue                         string
-	ViewerHint, ViewerClose           string
-	More                              string // ToolRow's cell for the cells it is too narrow to draw
+	Cut, Paste, SelectAll             string
+	// The shortcut column of ClipboardMenuItems' entries.
+	CutKey, CopyKey, PasteKey, SelectAllKey string
+	ShowValue                               string
+	ViewerHint, ViewerClose                 string
+	More                                    string // ToolRow's cell for the cells it is too narrow to draw
 }{
 	Ready:              "Ready",
 	Error:              "Error",
@@ -22,6 +26,13 @@ var Strings = struct {
 	Copy:               "Copy",
 	CopyAll:            "Copy All",
 	CopyAllWithHeaders: "Copy All with Headers",
+	Cut:                "Cut",
+	Paste:              "Paste",
+	SelectAll:          "Select All",
+	CutKey:             "Ctrl+X",
+	CopyKey:            "Ctrl+C",
+	PasteKey:           "Ctrl+V",
+	SelectAllKey:       "Ctrl+A",
 	ShowValue:          "Show Value",
 	ViewerHint:         "Esc or Close to dismiss — Shift+arrows to select, Ctrl+C to copy",
 	ViewerClose:        "Close",

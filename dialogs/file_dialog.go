@@ -457,6 +457,21 @@ func (d *FileDialog) activateButton() {
 	}
 }
 
+// FocusClipboardTargetAt implements core.ClipboardFocuser: a right-click on the
+// path or name field focuses it, caret and selection untouched. The file list
+// is not a text field: a right-click there is left alone.
+func (d *FileDialog) FocusClipboardTargetAt(x, y int) bool {
+	switch {
+	case d.pathField.HitTest(x, y):
+		d.setFocus(ffPath)
+	case d.nameField.HitTest(x, y):
+		d.setFocus(ffName)
+	default:
+		return false
+	}
+	return true
+}
+
 // FocusedClipboardTarget implements core.ClipboardHost: the path or name field
 // while one has focus, nothing while the list does. The explicit nil is
 // load-bearing: FocusedField returns a typed *widgets.InputField, and a nil one

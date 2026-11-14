@@ -75,6 +75,57 @@ func (p *PropertySheet) SelectAll() {
 	}
 }
 
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess over the focused
+// row, matching what HasSelection, Cut and Paste above would do: Copy takes the
+// field's selection or else the row's whole value; Cut and Paste need an
+// editable field and a form not locked for an Apply.
+func (p *PropertySheet) CanCopy() bool {
+	if cr, ok := p.focusedClipboardRow(); ok && cr.HasSelection() {
+		return canClipboard(cr, core.ClipboardAccess.CanCopy)
+	}
+	txt, ok := p.currentCopyText()
+	return ok && txt != ""
+}
+
+func (p *PropertySheet) CanCut() bool {
+	cr, ok := p.focusedClipboardRow()
+	return ok && !p.formLocked() && cr.HasSelection() && canClipboard(cr, core.ClipboardAccess.CanCut)
+}
+
+func (p *PropertySheet) CanPaste() bool {
+	cr, ok := p.focusedClipboardRow()
+	return ok && !p.formLocked() && canClipboard(cr, core.ClipboardAccess.CanPaste)
+}
+
+// CanSelectAll is false on a row that is copied whole (a static or flat row, a
+// checkbox): it has no selection for Select All to make.
+func (p *PropertySheet) CanSelectAll() bool {
+	cr, ok := p.focusedClipboardRow()
+	return ok && canClipboard(cr, core.ClipboardAccess.CanSelectAll)
+}
+
+// canClipboard asks row's core.ClipboardAccess; a row without one is taken as
+// editable, as core.ClipboardAccess says.
+func canClipboard(row ClipboardRow, can func(core.ClipboardAccess) bool) bool {
+	if a, ok := row.(core.ClipboardAccess); ok {
+		return can(a)
+	}
+	return true
+}
+
+// FocusClipboardTargetAt implements core.ClipboardFocuser: a right-click on a
+// copyable row of the current page focuses it (Form.FocusCopyableAt), so the
+// menu that follows acts on that row. Refused while applying, as every press
+// on the form is.
+func (p *PropertySheet) FocusClipboardTargetAt(x, y int) bool {
+	f := p.PageForm(p.current)
+	if f == nil || p.formLocked() || !f.FocusCopyableAt(x, y) {
+		return false
+	}
+	p.setZone(zoneForm)
+	return true
+}
+
 // FocusedClipboardTarget implements core.ClipboardHost. The sheet is its own
 // target: every method above resolves through the focused row and answers
 // harmlessly when focus is on the page list or button row. This makes every

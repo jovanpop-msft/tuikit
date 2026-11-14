@@ -36,8 +36,9 @@ tuikit/
 │               runecol.go (rune index ↔ display column), wordutil.go (word
 │               boundaries for Editor and InputField), clip_screen.go
 │               (ClipScreen: a tcell.Screen that drops writes outside a clip
-│               rect), clipboard.go (ClipboardTarget/ClipboardHost — the
-│               Copy/Cut/Paste contract every widget package shares),
+│               rect), clipboard.go (ClipboardTarget/ClipboardHost/
+│               ClipboardAccess/ClipboardFocuser — the Copy/Cut/Paste
+│               contract every widget package shares),
 │               control.go (Focusable/Enabler/Bounded/KeyHandler/
 │               MouseHandler/Overlay — the control contract hosts assert on),
 │               gesture.go (Gesture: which zone of a host claimed the held
@@ -63,6 +64,8 @@ tuikit/
 │               gesture begun in one of its controls)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
+│               clipboard_menu.go (ClipboardMenuItems: the standard
+│               Cut/Copy/Paste/Select All right-click menu),
 │               menu_box.go (one box per menu level, root and submenus:
 │               draw, scroll, hit-test, keys for both hosts),
 │               toolbar.go, tool_row.go (a panel's text toolbar: layout,

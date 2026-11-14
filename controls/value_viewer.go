@@ -173,6 +173,13 @@ func (v *ValueViewer) Cut() string { return "" }
 // Paste is a no-op: the popup is read-only.
 func (v *ValueViewer) Paste(text string) {}
 
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess: the popup is
+// read-only, copied from while it shows.
+func (v *ValueViewer) CanCopy() bool      { return v.HasSelection() }
+func (v *ValueViewer) CanCut() bool       { return false }
+func (v *ValueViewer) CanPaste() bool     { return false }
+func (v *ValueViewer) CanSelectAll() bool { return v.open }
+
 func (v *ValueViewer) SelectAll() {
 	if v.open {
 		v.editor.SelectAll()

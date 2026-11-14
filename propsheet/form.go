@@ -196,6 +196,33 @@ func (f *Form) setFocus(i int) {
 	f.ensureVisible(i)
 }
 
+// FocusCopyableAt focuses the row drawn at screen cell (x, y) when it has text
+// to copy or edit — a Copyable row that can take focus now — and reports
+// whether it did: a right-click's click-to-focus, ahead of its Cut/Copy/Paste
+// menu (core.ClipboardFocuser). The row's caret and selection are left alone.
+// A GridRow is refused: its DataGrid has its own right-click menu, which the
+// click must reach.
+func (f *Form) FocusCopyableAt(x, y int) bool {
+	if x < f.rect.X || x >= f.rect.Right() {
+		return false
+	}
+	for _, b := range f.bands {
+		if y < b.y || y >= b.y+b.h {
+			continue
+		}
+		row := f.rows[b.row]
+		if _, grid := row.(*GridRow); grid {
+			return false
+		}
+		if _, ok := row.(Copyable); !ok || !f.focusableAt(b.row) {
+			return false
+		}
+		f.setFocus(b.row)
+		return true
+	}
+	return false
+}
+
 // FocusedRow returns the currently focused row, or nil.
 func (f *Form) FocusedRow() Row {
 	if f.focus < 0 || f.focus >= len(f.rows) {

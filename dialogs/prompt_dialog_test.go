@@ -112,3 +112,22 @@ func TestPromptDialogClearsValidateBetweenShowings(t *testing.T) {
 		t.Errorf("status = %q, want it cleared", d.status)
 	}
 }
+
+// A right-click on the value field (core.ClipboardFocuser) brings focus back to
+// it from a button, keeping the selection the menu will act on; one elsewhere
+// is not the clipboard's.
+func TestPromptDialogRightClickFocusesTheField(t *testing.T) {
+	d := showTestPrompt(nil)
+	d.focus = promptFocusOK
+	d.syncFocus()
+	r := d.input.Bounds()
+	if d.FocusClipboardTargetAt(r.X-100, r.Y) {
+		t.Error("a right-click off the field was taken")
+	}
+	if !d.FocusClipboardTargetAt(d.input.InputX()+1, r.Y) {
+		t.Fatal("a right-click on the field was refused")
+	}
+	if d.FocusedClipboardTarget() == nil || !d.input.HasSelection() {
+		t.Error("field not focused, or its selection dropped")
+	}
+}

@@ -177,11 +177,12 @@ func (f *InputField) deleteSelection() {
 }
 
 // Cut returns the selected text and removes it — Ctrl+X's copy-then-delete.
-// Returns "" with nothing deleted if there is no selection, or in a password
-// field, which refuses Cut for the reason SelectedText refuses Copy (deleting
-// text the clipboard never received would just lose it).
+// Returns "" with nothing deleted if there is no selection, in a disabled field
+// (which refuses every edit, as it refuses keys), or in a password field, which
+// refuses Cut for the reason SelectedText refuses Copy (deleting text the
+// clipboard never received would just lose it).
 func (f *InputField) Cut() string {
-	if !f.HasSelection() || f.password {
+	if !f.CanCut() {
 		return ""
 	}
 	text := f.SelectedText()
@@ -194,8 +195,12 @@ func (f *InputField) Cut() string {
 }
 
 // Paste inserts text at the cursor, replacing any selection. InputField is
-// single-line, so only the first line of text is used.
+// single-line, so only the first line of text is used. A disabled field takes
+// nothing: it keeps its place in a focus ring, so Ctrl+V can reach it.
 func (f *InputField) Paste(text string) {
+	if f.disabled {
+		return
+	}
 	if nl := strings.IndexAny(text, "\r\n"); nl >= 0 {
 		text = text[:nl]
 	}
@@ -218,6 +223,16 @@ func (f *InputField) Paste(text string) {
 	f.cursor += len(pasted)
 	f.adjustScroll()
 	f.changed()
+}
+
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess. A disabled
+// field can still be copied from (it is greyed, not hidden), never edited; a
+// password field hands nothing over.
+func (f *InputField) CanCopy() bool  { return f.HasSelection() && !f.password }
+func (f *InputField) CanCut() bool   { return f.CanCopy() && !f.disabled }
+func (f *InputField) CanPaste() bool { return !f.disabled }
+func (f *InputField) CanSelectAll() bool {
+	return len(f.value) > 0
 }
 
 // changed fires OnChange for an edit that did change the value (Cut and Paste
