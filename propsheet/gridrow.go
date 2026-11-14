@@ -107,6 +107,13 @@ func (r *GridRow) Cut() string          { return r.Grid.Cut() }
 func (r *GridRow) Paste(text string)    { r.Grid.Paste(text) }
 func (r *GridRow) SelectAll()           { r.Grid.SelectAll() }
 
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess: the grid and its
+// viewer are read-only.
+func (r *GridRow) CanCopy() bool      { return r.Grid.CanCopy() }
+func (r *GridRow) CanCut() bool       { return false }
+func (r *GridRow) CanPaste() bool     { return false }
+func (r *GridRow) CanSelectAll() bool { return r.Grid.CanSelectAll() }
+
 func (r *GridRow) Dirty() bool {
 	return r.DirtyFn != nil && r.DirtyFn()
 }

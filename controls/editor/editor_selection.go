@@ -211,6 +211,16 @@ func (e *Editor) deleteSelection() {
 	e.selecting = false
 }
 
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess: a read-only
+// editor (a results or message view) can be copied from, never cut or pasted
+// into.
+func (e *Editor) CanCopy() bool  { return e.HasSelection() }
+func (e *Editor) CanCut() bool   { return !e.readOnly && e.HasSelection() }
+func (e *Editor) CanPaste() bool { return !e.readOnly }
+func (e *Editor) CanSelectAll() bool {
+	return e.doc.Len() > 1 || len(e.doc.Line(0)) > 0
+}
+
 // Cut returns the selected text (like SelectedText) and removes it, pushing an
 // undo step first: Ctrl+X's "copy then delete". Returns "" with nothing deleted
 // and no undo step if there is no selection.

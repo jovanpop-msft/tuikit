@@ -238,7 +238,13 @@ func (r *TextRow) HandleMouse(ev *tcell.EventMouse) bool {
 
 // CopyText is the value as shown: a flat row copies its unit too ("0 %"), as
 // read; an editable row copies the bare value, which pastes back into the field.
+// A Password row copies nothing, for the reason InputField.SelectedText refuses:
+// with nothing selected the sheet's Ctrl+C copies the whole value, and that put
+// the plaintext on the clipboard.
 func (r *TextRow) CopyText() string {
+	if r.password {
+		return ""
+	}
 	if r.flat() {
 		return r.flatValue()
 	}
@@ -266,6 +272,15 @@ func (r *TextRow) SelectAll() {
 	if r.enabled && !r.flat() {
 		r.field.SelectAll()
 	}
+}
+
+// CanCopy, CanCut and CanPaste implement core.ClipboardAccess for the row's
+// field: a flat or disabled row takes no edit, a Password row gives nothing.
+func (r *TextRow) CanCopy() bool  { return r.HasSelection() && r.field.CanCopy() }
+func (r *TextRow) CanCut() bool   { return r.enabled && !r.flat() && r.field.CanCut() }
+func (r *TextRow) CanPaste() bool { return r.enabled && !r.flat() && r.field.CanPaste() }
+func (r *TextRow) CanSelectAll() bool {
+	return r.enabled && !r.flat() && r.field.CanSelectAll()
 }
 
 // SetDirtyTracked with false makes the row a view control rather than an edit:

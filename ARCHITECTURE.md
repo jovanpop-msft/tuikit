@@ -206,7 +206,12 @@ A hover hint (`Toolbar`, `TreeView`'s title button) is an `Overlay` whose
 - **A dialog with a text field is a `core.ClipboardHost`** returning an
   *explicit* nil on a miss (a typed nil is not a nil interface); the host
   routes Copy/Cut/Paste to `Stack.ClipboardTarget`, never past the frontmost
-  dialog.
+  dialog. It is also a `core.ClipboardFocuser`: a right-click on one of its
+  text fields focuses that field (caret and selection untouched) and the host
+  opens `controls.ClipboardMenuItems` over it, so every field gets the same
+  Cut/Copy/Paste/Select All menu without a per-field handler. A field reports
+  what it can take through `core.ClipboardAccess`; a read-only one gets Copy
+  and Select All only.
 - **A dialog sized from the terminal re-decides its layout in `Show` and
   `Relayout`**, not only its constructor: `ModalDialog.Relayout` recentres at
   the last requested size, so override it to recompute and `SetSize`.
