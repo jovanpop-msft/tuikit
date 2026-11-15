@@ -181,6 +181,12 @@ A widget whose open state floats outside its rect — `DropDown`'s list,
   A `DropDown`'s open list is clamped to the *screen*, not the dialog, so a
   dialog routing one by hand offers it every event before
   `ConsumeOutsideClick`.
+- passes that refusal up a level. A `layout.Panel` holding an overlay
+  implements `layout.OverlayPanel`; `PanelManager.OverlayActive` then reports
+  it (or its own tab drop-down), and `PanelManager.HandleMouse` hands the
+  panel every event wherever it lands, so the application can offer the
+  `PanelManager` a press over a sibling pane first and the overlay's own
+  outside-press rule decides (`core.MouseHandler`).
 - skips a timer-driven `SetData` while a grid's overlay is open: `SetData`
   closes the popup a user opened to read.
 

@@ -44,3 +44,16 @@ type Closable interface {
 type Disposable interface {
 	Close()
 }
+
+// OverlayPanel is an optional interface a Panel implements when it can show
+// something floating outside a child's rect (a grid's cell menu or value
+// popup, a completion list) — core.Overlay's OverlayActive, without
+// DrawOverlay, since a panel draws its own overlays in Draw. While it reports
+// true, PanelManager.OverlayActive does too and PanelManager.HandleMouse hands
+// the panel every mouse event wherever it lands, so a press outside the panel
+// still reaches the overlay and dismisses it (core.MouseHandler). The panel's
+// HandleMouse must offer such an event to the overlay before any positional
+// routing of its own.
+type OverlayPanel interface {
+	OverlayActive() bool
+}

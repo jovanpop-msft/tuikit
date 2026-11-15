@@ -393,6 +393,21 @@ func (pm *PanelManager) HandleKey(ev *tcell.EventKey) bool {
 	return false
 }
 
+// OverlayActive reports whether the tab drop-down or the active panel's own
+// overlay (OverlayPanel) is open. While it is, a host gives the PanelManager
+// first refusal of every mouse event, wherever it lands (core.Overlay): the
+// overlay decides what dismisses it.
+func (pm *PanelManager) OverlayActive() bool {
+	return pm.comboOpen || panelOverlayActive(pm.ActivePanel())
+}
+
+// panelOverlayActive reports whether p implements OverlayPanel and has its
+// overlay open; false for a nil p.
+func panelOverlayActive(p Panel) bool {
+	o, ok := p.(OverlayPanel)
+	return ok && o.OverlayActive()
+}
+
 // HandleMouse routes mouse events to the tab bar or active panel.
 func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 	mx, my := ev.Position()
@@ -417,7 +432,19 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 		}
 	}
 
+	// The active panel's overlay gets first refusal wherever the event lands:
+	// a press outside it dismisses it and falls through (core.MouseHandler),
+	// which a host routing by position would otherwise never deliver.
+	if p := pm.ActivePanel(); p != nil && panelOverlayActive(p) {
+		return p.HandleMouse(ev)
+	}
+
 	if mx < pm.rect.X || mx >= pm.rect.X+pm.rect.W {
+		// A press outside closes the drop-down and falls through, as one
+		// outside its list does below.
+		if pm.comboOpen && ev.Buttons() == tcell.Button1 {
+			pm.setComboOpen(false)
+		}
 		return false
 	}
 
