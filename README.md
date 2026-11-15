@@ -102,7 +102,8 @@ tuikit/
 └── propsheet/  PropertySheet — multi-page editable properties dialog framework
               — doc.go, common.go, rows.go (Section/Note/Hint/Static),
                 textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
-                gridrow.go, editorrow.go, togglegrid.go, form.go; sheet.go
+                gridrow.go, editorrow.go, togglegrid.go, listeditor.go
+                (ListEditor: grid + detail rows + Add/Remove), form.go; sheet.go
                 (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
 ```
 

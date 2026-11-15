@@ -13,15 +13,11 @@ import (
 // ---------------------------------------------------------------------------
 
 // readOnlySafeKey reports whether ev is a movement or selection key
-// SetReadOnly(true) lets through. It inspects Key() only: Shift and Ctrl don't
-// change it, so Shift+Left passes while every mutating key is rejected.
+// SetReadOnly(true) lets through (traitReadOnly in editorKeys). It inspects
+// Key() only: Shift and Ctrl don't change it, so Shift+Left passes while every
+// mutating key is rejected.
 func readOnlySafeKey(ev *tcell.EventKey) bool {
-	switch ev.Key() {
-	case tcell.KeyUp, tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight,
-		tcell.KeyHome, tcell.KeyEnd, tcell.KeyPgUp, tcell.KeyPgDn, tcell.KeyCtrlA:
-		return true
-	}
-	return false
+	return editorKeys[ev.Key()].traits&traitReadOnly != 0
 }
 
 // HandleKey handles keyboard input. It reports true only when the key changed
@@ -75,46 +71,134 @@ func (e *Editor) keyState() editorKeyState {
 	return st
 }
 
+// keyTrait is what applyKey's shared prologue and epilogue need to know about a
+// key, beyond what its binding does.
+type keyTrait uint8
+
+const (
+	// traitArrow keys extend a rectangular block selection under Alt+Shift
+	// (unwrapped only).
+	traitArrow keyTrait = 1 << iota
+	// traitMotion keys extend a linear selection under Shift.
+	traitMotion
+	// traitReadOnly keys pass SetReadOnly(true): movement and selection only.
+	traitReadOnly
+	// traitGoalColumn keys keep desiredCol (vertical movement); every other key
+	// re-anchors it where the cursor ended.
+	traitGoalColumn
+	// traitNotTyped keys never count as a typed character, whatever Str carries,
+	// so they never open the completion popup from closed.
+	traitNotTyped
+)
+
+// keyCtx is what applyKey works out about a key once, before running its
+// binding.
+type keyCtx struct {
+	ev               *tcell.EventKey
+	ctrl, shift, alt bool
+	// hadSelection is HasSelection() before the key: the extend-selection
+	// prologue can arm an anchor, which must not read as a selection to replace.
+	hadSelection bool
+	// moveLine is Move Line (Ctrl+Shift+Up/Down), carved out of Shift's
+	// "extend selection".
+	moveLine bool
+}
+
+// keyOutcome is what a binding tells applyKey's shared epilogue.
+type keyOutcome int
+
+const (
+	// keyActed: the selection survives only while Shift (or Alt+Shift) extends it.
+	keyActed keyOutcome = iota
+	// keyKeptSelection: the binding managed the selection itself (block edits,
+	// line commands, Select All).
+	keyKeptSelection
+	// keyFired: the key went to a callback (Ctrl+Space), which changes nothing
+	// HandleKey can compare; the selection is kept.
+	keyFired
+	// keyUnbound: no binding. The selection is dropped as for any key, and nothing
+	// else runs.
+	keyUnbound
+	// keyDeclined: a binding switched off (Ctrl+/ with no comment prefix set).
+	// Nothing changes at all.
+	keyDeclined
+)
+
+// keyBinding is one row of editorKeys.
+type keyBinding struct {
+	run    func(e *Editor, k keyCtx) keyOutcome
+	traits keyTrait
+}
+
+// editorKeys binds every non-rune key the editor acts on. A key absent here
+// (KeyRune, and any other key) goes to keyText: typing, Ctrl+/ and Ctrl+Space
+// arrive as runes on most terminals.
+var editorKeys = map[tcell.Key]keyBinding{
+	tcell.KeyUp: {func(e *Editor, k keyCtx) keyOutcome { return e.keyVertical(k, -1) },
+		traitArrow | traitMotion | traitReadOnly | traitGoalColumn},
+	tcell.KeyDown: {func(e *Editor, k keyCtx) keyOutcome { return e.keyVertical(k, 1) },
+		traitArrow | traitMotion | traitReadOnly | traitGoalColumn},
+	tcell.KeyLeft:  {(*Editor).keyLeft, traitArrow | traitMotion | traitReadOnly},
+	tcell.KeyRight: {(*Editor).keyRight, traitArrow | traitMotion | traitReadOnly},
+	tcell.KeyHome:  {(*Editor).keyHome, traitMotion | traitReadOnly},
+	tcell.KeyEnd:   {(*Editor).keyEnd, traitMotion | traitReadOnly},
+	tcell.KeyPgUp:  {(*Editor).keyPgUp, traitMotion | traitReadOnly | traitGoalColumn},
+	tcell.KeyPgDn:  {(*Editor).keyPgDn, traitMotion | traitReadOnly | traitGoalColumn},
+	tcell.KeyCtrlA: {func(e *Editor, _ keyCtx) keyOutcome { e.SelectAll(); return keyKeptSelection },
+		traitReadOnly},
+
+	tcell.KeyEnter:      {(*Editor).keyEnter, traitNotTyped},
+	tcell.KeyBackspace:  {(*Editor).keyBackspace, traitNotTyped},
+	tcell.KeyBackspace2: {(*Editor).keyBackspace, traitNotTyped},
+	tcell.KeyDelete:     {(*Editor).keyDelete, traitNotTyped},
+	tcell.KeyTab:        {(*Editor).keyTab, traitNotTyped},
+	// Some terminals report Shift+Tab as Backtab rather than KeyTab+ModShift.
+	// Backtab always implies Shift.
+	tcell.KeyBacktab: {func(e *Editor, _ keyCtx) keyOutcome { e.DedentLines(); return keyKeptSelection }, 0},
+
+	tcell.KeyCtrlZ: {func(e *Editor, _ keyCtx) keyOutcome { e.undo(); return keyActed }, traitNotTyped},
+	tcell.KeyCtrlY: {func(e *Editor, _ keyCtx) keyOutcome { e.redo(); return keyActed }, traitNotTyped},
+	tcell.KeyCtrlD: {func(e *Editor, _ keyCtx) keyOutcome { e.DuplicateLines(); return keyActed }, 0},
+	tcell.KeyCtrlL: {func(e *Editor, _ keyCtx) keyOutcome { e.DeleteLines(); return keyActed }, 0},
+	tcell.KeyCtrlU: {(*Editor).keyCase, 0},
+	// Defensive: tcell v3 doesn't surface the 0x1F byte as KeyUS (see keyText),
+	// but a protocol that did would still toggle comments.
+	tcell.KeyUS: {func(e *Editor, _ keyCtx) keyOutcome { return e.keyToggleComment() }, 0},
+}
+
+// keyBindingFor is ev's row in editorKeys, or keyText for a key absent there.
+func keyBindingFor(ev *tcell.EventKey) keyBinding {
+	if b, ok := editorKeys[ev.Key()]; ok {
+		return b
+	}
+	return keyBinding{run: (*Editor).keyText}
+}
+
 // applyKey acts on a key HandleKey let through. bound is false for a key the
 // editor has no binding for; fired is true when it handed the key to a callback
 // (Ctrl+Space), which changes nothing HandleKey can compare.
 func (e *Editor) applyKey(ev *tcell.EventKey) (bound, fired bool) {
-	hadSelection := e.HasSelection()
-
 	mods := ev.Modifiers()
-	ctrlHeld := mods&tcell.ModCtrl != 0
-	shiftHeld := mods&tcell.ModShift != 0
-	altHeld := mods&tcell.ModAlt != 0
+	k := keyCtx{
+		ev:           ev,
+		ctrl:         mods&tcell.ModCtrl != 0,
+		shift:        mods&tcell.ModShift != 0,
+		alt:          mods&tcell.ModAlt != 0,
+		hadSelection: e.HasSelection(),
+	}
+	b := keyBindingFor(ev)
 
 	// typedChar marks a plainly typed character, the only key that can start a
 	// completion session from closed (subject to canAutoOpenCompletion's word-start
 	// gate). Everything else only re-syncs an already-open popup.
-	typedChar := false
-	switch ev.Key() {
-	case tcell.KeyEnter, tcell.KeyBackspace, tcell.KeyBackspace2, tcell.KeyDelete,
-		tcell.KeyTab, tcell.KeyCtrlZ, tcell.KeyCtrlY:
-	default:
-		if r := core.EvRune(ev); r != 0 && !ctrlHeld && !altHeld {
-			typedChar = true
-		}
-	}
-
-	isArrowKey := false
-	isMovementKey := false
-	switch ev.Key() {
-	case tcell.KeyUp, tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight:
-		isArrowKey = true
-		isMovementKey = true
-	case tcell.KeyHome, tcell.KeyEnd, tcell.KeyPgUp, tcell.KeyPgDn:
-		isMovementKey = true
-	}
+	typedChar := b.traits&traitNotTyped == 0 && core.EvRune(ev) != 0 && !k.ctrl && !k.alt
 
 	// Move Line (Ctrl+Shift+Up/Down) and rectangular block selection
 	// (Alt+Shift+Arrow) ride on movement keys plus Shift, so they are carved out of
 	// the plain "extend selection" combo below.
-	moveLineCombo := (ev.Key() == tcell.KeyUp || ev.Key() == tcell.KeyDown) && ctrlHeld && shiftHeld && !altHeld
-	blockCombo := isArrowKey && altHeld && shiftHeld && !e.wrapMode
-	linearExtendCombo := isMovementKey && shiftHeld && !altHeld && !moveLineCombo
+	k.moveLine = (ev.Key() == tcell.KeyUp || ev.Key() == tcell.KeyDown) && k.ctrl && k.shift && !k.alt
+	blockCombo := b.traits&traitArrow != 0 && k.alt && k.shift && !e.wrapMode
+	linearExtendCombo := b.traits&traitMotion != 0 && k.shift && !k.alt && !k.moveLine
 
 	extending := blockCombo || linearExtendCombo
 	if extending && !e.selecting {
@@ -122,259 +206,20 @@ func (e *Editor) applyKey(ev *tcell.EventKey) (bound, fired bool) {
 		e.selBlock = blockCombo
 		e.selAnchorRow, e.selAnchorCol = e.cursorRow, e.cursorCol
 	}
-	// dropSelection decides, after the switch, whether to clear the selection. True
-	// by default; cases managing it themselves clear it.
-	dropSelection := !extending
 
-	switch ev.Key() {
-	case tcell.KeyUp:
-		if moveLineCombo {
-			e.MoveLinesUp()
-			dropSelection = false
-		} else if e.wrapMode {
-			e.moveVisualRows(-1)
-		} else if e.cursorRow > 0 {
-			e.cursorRow--
-			e.cursorCol = e.colForDesired()
-		}
-	case tcell.KeyDown:
-		if moveLineCombo {
-			e.MoveLinesDown()
-			dropSelection = false
-		} else if e.wrapMode {
-			e.moveVisualRows(1)
-		} else if e.cursorRow < e.doc.Len()-1 {
-			e.cursorRow++
-			e.cursorCol = e.colForDesired()
-		}
-	case tcell.KeyLeft:
-		if ctrlHeld {
-			if e.cursorCol > 0 {
-				e.cursorCol = core.WordBoundaryLeft(e.doc.Line(e.cursorRow), e.cursorCol)
-			} else if e.cursorRow > 0 && !e.selBlock {
-				// Column selection never crosses lines via Left/Right; only Up/Down changes a
-				// block's row range. Applies to the word-jump above as well as the plain move.
-				e.cursorRow--
-				e.cursorCol = len(e.doc.Line(e.cursorRow))
-			}
-		} else if e.cursorCol > 0 {
-			e.cursorCol = core.PrevGrapheme(e.doc.Line(e.cursorRow), e.cursorCol)
-		} else if e.cursorRow > 0 && !e.selBlock {
-			e.cursorRow--
-			e.cursorCol = len(e.doc.Line(e.cursorRow))
-		}
-	case tcell.KeyRight:
-		if ctrlHeld {
-			if e.cursorRow < e.doc.Len() && e.cursorCol < len(e.doc.Line(e.cursorRow)) {
-				e.cursorCol = core.WordBoundaryRight(e.doc.Line(e.cursorRow), e.cursorCol)
-			} else if e.cursorRow < e.doc.Len()-1 && !e.selBlock {
-				e.cursorRow++
-				e.cursorCol = 0
-			}
-		} else if e.cursorRow < e.doc.Len() && e.cursorCol < len(e.doc.Line(e.cursorRow)) {
-			e.cursorCol = core.NextGrapheme(e.doc.Line(e.cursorRow), e.cursorCol)
-		} else if e.cursorRow < e.doc.Len()-1 && !e.selBlock {
-			e.cursorRow++
-			e.cursorCol = 0
-		}
-	case tcell.KeyHome:
-		if ctrlHeld {
-			e.cursorRow = 0
-		}
-		e.cursorCol = 0
-	case tcell.KeyEnd:
-		if ctrlHeld {
-			e.cursorRow = e.doc.Len() - 1
-		}
-		if e.cursorRow < e.doc.Len() {
-			e.cursorCol = len(e.doc.Line(e.cursorRow))
-		}
-	case tcell.KeyCtrlA:
-		e.SelectAll()
-		dropSelection = false
-	case tcell.KeyPgUp:
-		if e.wrapMode {
-			e.moveVisualRows(-e.contentH())
-			break
-		}
-		e.cursorRow = max(0, e.cursorRow-e.contentH())
-		e.cursorCol = e.colForDesired()
-	case tcell.KeyPgDn:
-		if e.wrapMode {
-			e.moveVisualRows(e.contentH())
-			break
-		}
-		e.cursorRow = min(e.doc.Len()-1, e.cursorRow+e.contentH())
-		e.cursorCol = e.colForDesired()
-	case tcell.KeyEnter:
-		e.pushUndoLocal()
-		// Read before deleteSelection, which drops the block along with the selection;
-		// asking afterwards always answers false.
-		wasBlock := e.blockEditing()
-		if hadSelection {
-			e.deleteSelection()
-		}
-		// Auto-indent lives here, in the key handler, never in insertNewline: Paste
-		// and blockPaste drive insertNewline once per pasted line, so indenting there
-		// would re-indent each line on top of the indentation it carries (paste
-		// becomes a staircase). Block editing keeps its plain split. The indent is
-		// measured before the split, and the spaces go in under the pushUndoLocal
-		// above, so one Ctrl+Z undoes the whole Enter.
-		indent := 0
-		if !wasBlock {
-			indent = e.leadingIndentForNewLine() + e.smartIndentBonus()
-		}
-		e.insertNewline()
-		for range indent {
-			e.insertRune(' ')
-		}
-	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		e.pushUndoLocal()
-		switch {
-		case e.blockEditing():
-			// Block edits keep the block armed for the next key, so they take over from the
-			// plain-selection cases below rather than via deleteSelection, which drops it.
-			e.blockBackspace()
-			dropSelection = false
-		case hadSelection:
-			e.deleteSelection()
-		case ctrlHeld:
-			e.deleteWordLeft()
-		default:
-			e.backspace()
-		}
-	case tcell.KeyDelete:
-		e.pushUndoLocal()
-		switch {
-		case e.blockEditing():
-			e.blockDelete()
-			dropSelection = false
-		case hadSelection:
-			e.deleteSelection()
-		case ctrlHeld:
-			e.deleteWordRight()
-		default:
-			e.deleteChar()
-		}
-	case tcell.KeyTab:
-		if shiftHeld {
-			e.DedentLines()
-			dropSelection = false
-			break
-		}
-		if e.blockEditing() {
-			e.pushUndoLocal()
-			for range e.indentWidth {
-				e.blockInsertRune(' ')
-			}
-			dropSelection = false
-			break
-		}
-		if hadSelection {
-			sr, _, er, _ := e.selectionBounds()
-			if sr != er {
-				e.IndentLines()
-				dropSelection = false
-				break
-			}
-		}
-		e.pushUndoLocal()
-		if hadSelection {
-			e.deleteSelection()
-		}
-		for range e.indentWidth {
-			e.insertRune(' ')
-		}
-	case tcell.KeyBacktab:
-		// Some terminals report Shift+Tab as this key rather than KeyTab+ModShift.
-		// Backtab always implies Shift.
-		e.DedentLines()
-		dropSelection = false
-	case tcell.KeyCtrlZ:
-		e.undo()
-	case tcell.KeyCtrlY:
-		e.redo()
-	case tcell.KeyCtrlD:
-		e.DuplicateLines()
-	case tcell.KeyCtrlL:
-		e.DeleteLines()
-	case tcell.KeyCtrlU:
-		if shiftHeld {
-			e.UppercaseSelection()
-		} else {
-			e.LowercaseSelection()
-		}
-		dropSelection = false
-	case tcell.KeyUS:
-		// Defensive: tcell v3 doesn't surface the 0x1F byte as KeyUS (see the default
-		// case), but a protocol that did would still toggle comments.
-		if len(e.lineComment) == 0 {
-			return false, false // no language prefix set: Ctrl+/ is unbound
-		}
-		e.ToggleLineComments()
-		dropSelection = false
-	default:
-		r := core.EvRune(ev)
-		// Ctrl+/ emits 0x1F on legacy terminals, which tcell v3 decodes as KeyRune '_'
-		// with ModCtrl, not KeyUS; a modern keyboard protocol reports '/'. Accept both.
-		if ctrlHeld && (r == '/' || r == '_') {
-			if len(e.lineComment) == 0 {
-				return false, false // no language prefix set: Ctrl+/ is unbound
-			}
-			e.ToggleLineComments()
-			dropSelection = false
-			break
-		}
-		// Ctrl+Space is SSMS's IntelliSense trigger where a completion provider is
-		// installed; otherwise it opens OnRightClick's Cut/Copy/Paste menu at the text
-		// cursor.
-		if ctrlHeld && r == ' ' {
-			if e.completionProvider != nil {
-				e.triggerCompletionExplicit()
-				fired = true
-			} else if e.OnRightClick != nil {
-				x, y := e.cursorScreenPos()
-				e.OnRightClick(x, y)
-				fired = true
-			}
-			dropSelection = false
-			break
-		}
-		if r != 0 && !ctrlHeld && !altHeld {
-			e.pushUndoLocal()
-			if e.blockEditing() {
-				// One character into every row the block spans, leaving it armed a column
-				// further right so the next keystroke follows.
-				for _, r := range core.EvText(ev) {
-					e.blockInsertRune(r)
-				}
-				dropSelection = false
-				break
-			}
-			if hadSelection {
-				e.deleteSelection()
-			}
-			for _, r := range core.EvText(ev) {
-				e.insertRune(r)
-			}
-		} else {
-			if dropSelection {
-				e.selecting = false
-				e.selBlock = false
-			}
-			return false, false
-		}
+	out := b.run(e, k)
+	if out == keyDeclined {
+		return false, false
 	}
-	if dropSelection {
+	if (out == keyActed || out == keyUnbound) && !extending {
 		e.selecting = false
 		e.selBlock = false
 	}
+	if out == keyUnbound {
+		return false, false
+	}
 	e.clampCursor()
-	// Vertical movement preserves the goal column; every other cursor-moving key
-	// re-anchors it where the cursor ended.
-	switch ev.Key() {
-	case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn:
-	default:
+	if b.traits&traitGoalColumn == 0 {
 		e.desiredCol = e.cursorDisplayCol()
 	}
 	e.ensureCursorVisible()
@@ -384,7 +229,251 @@ func (e *Editor) applyKey(ev *tcell.EventKey) (bound, fired bool) {
 	if e.completionOpen || (typedChar && e.canAutoOpenCompletion()) {
 		e.updateCompletion()
 	}
-	return true, fired
+	return true, out == keyFired
+}
+
+// ---------------------------------------------------------------------------
+// Key bindings: movement
+// ---------------------------------------------------------------------------
+
+// keyVertical is Up (dir -1) and Down (dir 1), and Move Line under Ctrl+Shift.
+func (e *Editor) keyVertical(k keyCtx, dir int) keyOutcome {
+	switch {
+	case k.moveLine:
+		if dir < 0 {
+			e.MoveLinesUp()
+		} else {
+			e.MoveLinesDown()
+		}
+		return keyKeptSelection
+	case e.wrapMode:
+		e.moveVisualRows(dir)
+	case dir < 0 && e.cursorRow > 0, dir > 0 && e.cursorRow < e.doc.Len()-1:
+		e.cursorRow += dir
+		e.cursorCol = e.colForDesired()
+	}
+	return keyActed
+}
+
+func (e *Editor) keyLeft(k keyCtx) keyOutcome {
+	if k.ctrl {
+		if e.cursorCol > 0 {
+			e.cursorCol = core.WordBoundaryLeft(e.doc.Line(e.cursorRow), e.cursorCol)
+		} else if e.cursorRow > 0 && !e.selBlock {
+			// Column selection never crosses lines via Left/Right; only Up/Down changes a
+			// block's row range. Applies to the word-jump above as well as the plain move.
+			e.cursorRow--
+			e.cursorCol = len(e.doc.Line(e.cursorRow))
+		}
+	} else if e.cursorCol > 0 {
+		e.cursorCol = core.PrevGrapheme(e.doc.Line(e.cursorRow), e.cursorCol)
+	} else if e.cursorRow > 0 && !e.selBlock {
+		e.cursorRow--
+		e.cursorCol = len(e.doc.Line(e.cursorRow))
+	}
+	return keyActed
+}
+
+func (e *Editor) keyRight(k keyCtx) keyOutcome {
+	if k.ctrl {
+		if e.cursorRow < e.doc.Len() && e.cursorCol < len(e.doc.Line(e.cursorRow)) {
+			e.cursorCol = core.WordBoundaryRight(e.doc.Line(e.cursorRow), e.cursorCol)
+		} else if e.cursorRow < e.doc.Len()-1 && !e.selBlock {
+			e.cursorRow++
+			e.cursorCol = 0
+		}
+	} else if e.cursorRow < e.doc.Len() && e.cursorCol < len(e.doc.Line(e.cursorRow)) {
+		e.cursorCol = core.NextGrapheme(e.doc.Line(e.cursorRow), e.cursorCol)
+	} else if e.cursorRow < e.doc.Len()-1 && !e.selBlock {
+		e.cursorRow++
+		e.cursorCol = 0
+	}
+	return keyActed
+}
+
+func (e *Editor) keyHome(k keyCtx) keyOutcome {
+	if k.ctrl {
+		e.cursorRow = 0
+	}
+	e.cursorCol = 0
+	return keyActed
+}
+
+func (e *Editor) keyEnd(k keyCtx) keyOutcome {
+	if k.ctrl {
+		e.cursorRow = e.doc.Len() - 1
+	}
+	if e.cursorRow < e.doc.Len() {
+		e.cursorCol = len(e.doc.Line(e.cursorRow))
+	}
+	return keyActed
+}
+
+func (e *Editor) keyPgUp(keyCtx) keyOutcome {
+	if e.wrapMode {
+		e.moveVisualRows(-e.contentH())
+		return keyActed
+	}
+	e.cursorRow = max(0, e.cursorRow-e.contentH())
+	e.cursorCol = e.colForDesired()
+	return keyActed
+}
+
+func (e *Editor) keyPgDn(keyCtx) keyOutcome {
+	if e.wrapMode {
+		e.moveVisualRows(e.contentH())
+		return keyActed
+	}
+	e.cursorRow = min(e.doc.Len()-1, e.cursorRow+e.contentH())
+	e.cursorCol = e.colForDesired()
+	return keyActed
+}
+
+// ---------------------------------------------------------------------------
+// Key bindings: editing
+// ---------------------------------------------------------------------------
+
+func (e *Editor) keyEnter(k keyCtx) keyOutcome {
+	e.pushUndoLocal()
+	// Read before deleteSelection, which drops the block along with the selection;
+	// asking afterwards always answers false.
+	wasBlock := e.blockEditing()
+	if k.hadSelection {
+		e.deleteSelection()
+	}
+	// Auto-indent lives here, in the key handler, never in insertNewline: Paste
+	// and blockPaste drive insertNewline once per pasted line, so indenting there
+	// would re-indent each line on top of the indentation it carries (paste
+	// becomes a staircase). Block editing keeps its plain split. The indent is
+	// measured before the split, and the spaces go in under the pushUndoLocal
+	// above, so one Ctrl+Z undoes the whole Enter.
+	indent := 0
+	if !wasBlock {
+		indent = e.leadingIndentForNewLine() + e.smartIndentBonus()
+	}
+	e.insertNewline()
+	for range indent {
+		e.insertRune(' ')
+	}
+	return keyActed
+}
+
+func (e *Editor) keyBackspace(k keyCtx) keyOutcome {
+	return e.keyErase(k, (*Editor).blockBackspace, (*Editor).deleteWordLeft, (*Editor).backspace)
+}
+
+func (e *Editor) keyDelete(k keyCtx) keyOutcome {
+	return e.keyErase(k, (*Editor).blockDelete, (*Editor).deleteWordRight, (*Editor).deleteChar)
+}
+
+// keyErase is Backspace and Delete, which differ only in direction.
+func (e *Editor) keyErase(k keyCtx, block, word, char func(*Editor)) keyOutcome {
+	e.pushUndoLocal()
+	switch {
+	case e.blockEditing():
+		// Block edits keep the block armed for the next key, so they take over from the
+		// plain-selection cases below rather than via deleteSelection, which drops it.
+		block(e)
+		return keyKeptSelection
+	case k.hadSelection:
+		e.deleteSelection()
+	case k.ctrl:
+		word(e)
+	default:
+		char(e)
+	}
+	return keyActed
+}
+
+func (e *Editor) keyTab(k keyCtx) keyOutcome {
+	if k.shift {
+		e.DedentLines()
+		return keyKeptSelection
+	}
+	if e.blockEditing() {
+		e.pushUndoLocal()
+		for range e.indentWidth {
+			e.blockInsertRune(' ')
+		}
+		return keyKeptSelection
+	}
+	if k.hadSelection {
+		if sr, _, er, _ := e.selectionBounds(); sr != er {
+			e.IndentLines()
+			return keyKeptSelection
+		}
+	}
+	e.pushUndoLocal()
+	if k.hadSelection {
+		e.deleteSelection()
+	}
+	for range e.indentWidth {
+		e.insertRune(' ')
+	}
+	return keyActed
+}
+
+// keyCase is Ctrl+U (lowercase) and Ctrl+Shift+U (uppercase).
+func (e *Editor) keyCase(k keyCtx) keyOutcome {
+	if k.shift {
+		e.UppercaseSelection()
+	} else {
+		e.LowercaseSelection()
+	}
+	return keyKeptSelection
+}
+
+// keyToggleComment is Ctrl+/, unbound while no language prefix is set.
+func (e *Editor) keyToggleComment() keyOutcome {
+	if len(e.lineComment) == 0 {
+		return keyDeclined
+	}
+	e.ToggleLineComments()
+	return keyKeptSelection
+}
+
+// keyText is every key absent from editorKeys: a typed character, Ctrl+/ and
+// Ctrl+Space (both arrive as runes with ModCtrl), or an unbound key.
+func (e *Editor) keyText(k keyCtx) keyOutcome {
+	r := core.EvRune(k.ev)
+	switch {
+	case k.ctrl && (r == '/' || r == '_'):
+		// Ctrl+/ emits 0x1F on legacy terminals, which tcell v3 decodes as KeyRune '_'
+		// with ModCtrl, not KeyUS; a modern keyboard protocol reports '/'. Accept both.
+		return e.keyToggleComment()
+	case k.ctrl && r == ' ':
+		// Ctrl+Space is SSMS's IntelliSense trigger where a completion provider is
+		// installed; otherwise it opens OnRightClick's Cut/Copy/Paste menu at the text
+		// cursor.
+		switch {
+		case e.completionProvider != nil:
+			e.triggerCompletionExplicit()
+			return keyFired
+		case e.OnRightClick != nil:
+			x, y := e.cursorScreenPos()
+			e.OnRightClick(x, y)
+			return keyFired
+		}
+		return keyKeptSelection
+	case r == 0 || k.ctrl || k.alt:
+		return keyUnbound
+	}
+	e.pushUndoLocal()
+	if e.blockEditing() {
+		// One character into every row the block spans, leaving it armed a column
+		// further right so the next keystroke follows.
+		for _, r := range core.EvText(k.ev) {
+			e.blockInsertRune(r)
+		}
+		return keyKeptSelection
+	}
+	if k.hadSelection {
+		e.deleteSelection()
+	}
+	for _, r := range core.EvText(k.ev) {
+		e.insertRune(r)
+	}
+	return keyActed
 }
 
 // editorZone is the part of the editor a Button1 press began in, which owns
