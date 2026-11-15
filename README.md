@@ -37,7 +37,7 @@ tuikit/
 │               boundaries for Editor and InputField), clip_screen.go
 │               (ClipScreen: a tcell.Screen that drops writes outside a clip
 │               rect), clipboard.go (ClipboardTarget/ClipboardHost/
-│               ClipboardAccess/ClipboardFocuser — the Copy/Cut/Paste
+│               ClipboardFocuser — the Copy/Cut/Paste
 │               contract every widget package shares),
 │               control.go (Focusable/Enabler/Bounded/KeyHandler/
 │               MouseHandler/Overlay — the control contract hosts assert on),

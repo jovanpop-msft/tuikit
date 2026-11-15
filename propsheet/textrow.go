@@ -274,7 +274,7 @@ func (r *TextRow) SelectAll() {
 	}
 }
 
-// CanCopy, CanCut and CanPaste implement core.ClipboardAccess for the row's
+// CanCopy, CanCut and CanPaste implement core.ClipboardTarget for the row's
 // field: a flat or disabled row takes no edit, a Password row gives nothing.
 func (r *TextRow) CanCopy() bool  { return r.HasSelection() && r.field.CanCopy() }
 func (r *TextRow) CanCut() bool   { return r.enabled && !r.flat() && r.field.CanCut() }

@@ -201,9 +201,11 @@ func (f *Form) setFocus(i int) {
 // whether it did: a right-click's click-to-focus, ahead of its Cut/Copy/Paste
 // menu (core.ClipboardFocuser). The row's caret and selection are left alone.
 // A GridRow is refused: its DataGrid has its own right-click menu, which the
-// click must reach.
+// click must reach. So is every click while a row's overlay is open (a
+// SelectRow's list, an editor's completion popup): the overlay is drawn over
+// the rows below it, so the row under (x, y) is not what the user clicked.
 func (f *Form) FocusCopyableAt(x, y int) bool {
-	if x < f.rect.X || x >= f.rect.Right() {
+	if f.OverlayActive() || x < f.rect.X || x >= f.rect.Right() {
 		return false
 	}
 	for _, b := range f.bands {
