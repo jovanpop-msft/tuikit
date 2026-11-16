@@ -9,12 +9,30 @@ package core
 // Cut returns only text it actually removed. A read-only target, or one that
 // refuses to hand its text over (a password field), returns "" and changes
 // nothing; a host treats "" as "nothing was cut" and leaves the clipboard alone.
+//
+// The Can methods say which actions would do something right now. A host
+// building a right-click Cut/Copy/Paste menu (controls.ClipboardMenuItems) reads
+// them to grey what would be a no-op and to leave Cut and Paste off a read-only
+// target entirely, so the menu never offers an edit the target would silently
+// refuse. They are part of the interface, not an optional companion, so a new
+// read-only target cannot be taken as editable by forgetting them.
+//
+// CanCopy is true when Copy would hand over non-empty text (a password field
+// never does); CanCut when Cut would remove some; CanPaste when Paste would
+// insert (the target is editable — whether the clipboard holds text is the
+// host's to know); CanSelectAll when SelectAll would select something (a
+// property sheet's flat row is copied whole and has no selection to make).
 type ClipboardTarget interface {
 	HasSelection() bool
 	SelectedText() string
 	Cut() string
 	Paste(text string)
 	SelectAll()
+
+	CanCopy() bool
+	CanCut() bool
+	CanPaste() bool
+	CanSelectAll() bool
 }
 
 // ClipboardHost is implemented by a container (a dialog, a property sheet) that
@@ -56,26 +74,6 @@ type ClipboardEditHandler interface {
 	ClipboardEdited(target ClipboardTarget)
 }
 
-// ClipboardAccess is an optional companion to ClipboardTarget, for a target
-// that can say which clipboard actions would do something right now. A host
-// building a right-click Cut/Copy/Paste menu reads it to grey what would be a
-// no-op and to leave Cut and Paste off a read-only target entirely, so the menu
-// never offers an edit the target would silently refuse.
-//
-// CanCopy is true when Copy would hand over non-empty text (a password field
-// never does); CanCut when Cut would remove some; CanPaste when Paste would
-// insert (the target is editable — whether the clipboard holds text is the
-// host's to know); CanSelectAll when SelectAll would select something (a
-// property sheet's flat row is copied whole and has no selection to make). A
-// target without it is taken as editable, with Copy and Cut available exactly
-// when HasSelection is.
-type ClipboardAccess interface {
-	CanCopy() bool
-	CanCut() bool
-	CanPaste() bool
-	CanSelectAll() bool
-}
-
 // ClipboardFocuser is an optional companion to ClipboardHost: a right-click's
 // half of click-to-focus. FocusClipboardTargetAt moves keyboard focus to the
 // text field (or copyable read-only value) at screen cell (x, y) and reports
@@ -83,7 +81,12 @@ type ClipboardAccess interface {
 // move the caret or drop the selection — the menu it precedes acts on that
 // selection — and must not act on anything else at that point: a right-click on
 // a button or a list item is not this call's to handle, so it returns false
-// and the host routes the click as usual.
+// and the host routes the click as usual. It must also return false while one
+// of the host's own overlays is open (a dropdown's list, a completion popup):
+// the overlay is drawn over the fields beneath it, so a geometric hit test
+// would focus a field the user cannot see under the pointer. The application
+// asks before routing the click to the host, so the host is the only one that
+// knows.
 //
 // An application opens its Cut/Copy/Paste menu (see controls.ClipboardMenuItems)
 // when this returns true, without each dialog wiring a right-click handler per

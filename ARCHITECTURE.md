@@ -181,6 +181,12 @@ A widget whose open state floats outside its rect — `DropDown`'s list,
   A `DropDown`'s open list is clamped to the *screen*, not the dialog, so a
   dialog routing one by hand offers it every event before
   `ConsumeOutsideClick`.
+- passes that refusal up a level. A `layout.Panel` holding an overlay
+  implements `layout.OverlayPanel`; `PanelManager.OverlayActive` then reports
+  it (or its own tab drop-down), and `PanelManager.HandleMouse` hands the
+  panel every event wherever it lands, so the application can offer the
+  `PanelManager` a press over a sibling pane first and the overlay's own
+  outside-press rule decides (`core.MouseHandler`).
 - skips a timer-driven `SetData` while a grid's overlay is open: `SetData`
   closes the popup a user opened to read.
 
@@ -210,8 +216,9 @@ A hover hint (`Toolbar`, `TreeView`'s title button) is an `Overlay` whose
   text fields focuses that field (caret and selection untouched) and the host
   opens `controls.ClipboardMenuItems` over it, so every field gets the same
   Cut/Copy/Paste/Select All menu without a per-field handler. A field reports
-  what it can take through `core.ClipboardAccess`; a read-only one gets Copy
-  and Select All only.
+  what it can take through `core.ClipboardTarget`'s `Can*` methods (part of
+  the interface, so a new target cannot be taken as editable by omission); a
+  read-only one gets Copy and Select All only.
 - **A dialog sized from the terminal re-decides its layout in `Show` and
   `Relayout`**, not only its constructor: `ModalDialog.Relayout` recentres at
   the last requested size, so override it to recompute and `SetSize`.

@@ -38,3 +38,40 @@ func BenchmarkFrameDataGrid(b *testing.B) {
 		g.Draw(s)
 	}
 }
+
+// BenchmarkFrameDataGridWideChars is review step D3 (2026-11-16): a large
+// result of wide-character data, 100k rows by 30 columns of CJK, emoji and
+// combining marks, drawn scrolled to the middle in both directions (the
+// display-width math of the columns left of the view must not be redone per
+// cell). The bar is a frame under 5 ms.
+func BenchmarkFrameDataGridWideChars(b *testing.B) {
+	const nRows, nCols = 100_000, 30
+	cols := make([]string, nCols)
+	for c := range cols {
+		cols[c] = "列_" + strconv.Itoa(c)
+	}
+	cells := []string{"你好世界", "日本語のテキスト", "été café", "❤️ ok", "🇷🇴 flag", "한국어 텍스트", "plain ascii text value", "NULL"}
+	rows := make([][]string, nRows)
+	for i := range rows {
+		r := make([]string, nCols)
+		for c := range r {
+			r[c] = cells[(i+c)%len(cells)] + " " + strconv.Itoa(i)
+		}
+		rows[i] = r
+	}
+	g := NewDataGrid()
+	g.SetRowNumbers(true)
+	g.SetData(cols, rows)
+	g.SetBounds(0, 0, frameW, frameH)
+	g.SetScroll(nRows/2, nCols/2)
+	s := frameScreen(b)
+	g.Draw(s)
+	if g.ScrollRow() != nRows/2 || g.ScrollCol() != nCols/2 {
+		b.Fatalf("scrolled to row %d col %d, want %d, %d", g.ScrollRow(), g.ScrollCol(), nRows/2, nCols/2)
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		g.Draw(s)
+	}
+}

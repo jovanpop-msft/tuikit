@@ -37,7 +37,7 @@ tuikit/
 │               boundaries for Editor and InputField), clip_screen.go
 │               (ClipScreen: a tcell.Screen that drops writes outside a clip
 │               rect), clipboard.go (ClipboardTarget/ClipboardHost/
-│               ClipboardAccess/ClipboardFocuser — the Copy/Cut/Paste
+│               ClipboardFocuser — the Copy/Cut/Paste
 │               contract every widget package shares),
 │               control.go (Focusable/Enabler/Bounded/KeyHandler/
 │               MouseHandler/Overlay — the control contract hosts assert on),
@@ -102,7 +102,8 @@ tuikit/
 └── propsheet/  PropertySheet — multi-page editable properties dialog framework
               — doc.go, common.go, rows.go (Section/Note/Hint/Static),
                 textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
-                gridrow.go, editorrow.go, togglegrid.go, form.go; sheet.go
+                gridrow.go, editorrow.go, togglegrid.go, listeditor.go
+                (ListEditor: grid + detail rows + Add/Remove), form.go; sheet.go
                 (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
 ```
 

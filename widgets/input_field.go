@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
@@ -195,7 +196,11 @@ func (f *InputField) Cut() string {
 }
 
 // Paste inserts text at the cursor, replacing any selection. InputField is
-// single-line, so only the first line of text is used. A disabled field takes
+// single-line, so only the first line of text is used. A TAB becomes one space
+// (what DrawTextLine shows for it) and every other control character is
+// dropped: typing cannot enter them, Draw skips them as zero-width, so kept
+// they rode along invisibly in the value — a grid row pasted into a server
+// name or a filter carried TABs the user could not see. A disabled field takes
 // nothing: it keeps its place in a focus ring, so Ctrl+V can reach it.
 func (f *InputField) Paste(text string) {
 	if f.disabled {
@@ -204,6 +209,15 @@ func (f *InputField) Paste(text string) {
 	if nl := strings.IndexAny(text, "\r\n"); nl >= 0 {
 		text = text[:nl]
 	}
+	text = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t':
+			return ' '
+		case unicode.IsControl(r):
+			return -1
+		}
+		return r
+	}, text)
 	if text == "" {
 		return
 	}
@@ -225,7 +239,7 @@ func (f *InputField) Paste(text string) {
 	f.changed()
 }
 
-// CanCopy, CanCut and CanPaste implement core.ClipboardAccess. A disabled
+// CanCopy, CanCut and CanPaste implement core.ClipboardTarget. A disabled
 // field can still be copied from (it is greyed, not hidden), never edited; a
 // password field hands nothing over.
 func (f *InputField) CanCopy() bool  { return f.HasSelection() && !f.password }

@@ -1,6 +1,8 @@
 package propsheet
 
 import (
+	"github.com/gdamore/tcell/v3"
+
 	"testing"
 
 	"github.com/radix29/tuikit/controls"
@@ -50,10 +52,10 @@ func TestRightClickFocusesTheCopyableRowUnderIt(t *testing.T) {
 	}
 }
 
-// TestSheetClipboardAccessFollowsTheFocusedRow: what the right-click menu
+// TestSheetClipboardCanMethodsFollowTheFocusedRow: what the right-click menu
 // offers comes from here, so a read-only page must answer no Cut or Paste and a
 // Password row no Copy.
-func TestSheetClipboardAccessFollowsTheFocusedRow(t *testing.T) {
+func TestSheetClipboardCanMethodsFollowTheFocusedRow(t *testing.T) {
 	name := Text("Name", "srv01", 20)
 	pw := Password("Password", 20)
 	pw.field.SetValue("s3cret")
@@ -64,7 +66,7 @@ func TestSheetClipboardAccessFollowsTheFocusedRow(t *testing.T) {
 	p.setZone(zoneForm)
 	f.FocusFirst()
 
-	var _ core.ClipboardAccess = p
+	var _ core.ClipboardTarget = p
 	if !p.CanPaste() || !p.CanCopy() || p.CanCut() {
 		t.Errorf("editable row: CanPaste=%v CanCopy=%v CanCut=%v, want true true false (no selection)", p.CanPaste(), p.CanCopy(), p.CanCut())
 	}
@@ -95,5 +97,41 @@ func TestSheetClipboardAccessFollowsTheFocusedRow(t *testing.T) {
 	}
 	if p.CanSelectAll() {
 		t.Error("read-only form: CanSelectAll true on a flat row, which has nothing to select")
+	}
+}
+
+// TestRightClickThroughAnOpenSelectListFocusesNothing: a SelectRow's open list
+// is drawn over the rows below it, so a right-click on the list must not be
+// taken for the text row underneath — the menu would open on a field the user
+// cannot see, over a list that stays open.
+func TestRightClickThroughAnOpenSelectListFocusesNothing(t *testing.T) {
+	auth := Select("Auth", []string{"One", "Two", "Three", "Four"}, 0)
+	name := Text("Name", "srv01", 20)
+	scr := tuikittest.NewScreen(100, 40)
+	p := NewPropertySheet(scr, "Test Properties")
+	p.SetSize(90, 28)
+	p.SetPages([]string{"General"})
+	p.Show()
+	f := NewForm(auth, name)
+	p.SetPageForm(0, p.pages[0].seq, f)
+	p.setZone(zoneForm)
+	f.FocusFirst()
+	p.Draw(scr)
+
+	_, y, ok := scr.Find("Name")
+	if !ok {
+		t.Fatal("Name row not drawn")
+	}
+	x := name.field.Bounds().X
+	f.HandleKey(tcell.NewEventKey(tcell.KeyF4, "", tcell.ModNone))
+	if !f.OverlayActive() {
+		t.Fatal("F4 did not open the Select row's list")
+	}
+	p.Draw(scr)
+	if p.FocusClipboardTargetAt(x, y) {
+		t.Error("a right-click on the open list focused the text row under it")
+	}
+	if f.FocusedRow() != Row(auth) || !f.OverlayActive() {
+		t.Error("the right-click moved focus or closed the list")
 	}
 }

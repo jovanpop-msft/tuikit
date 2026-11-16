@@ -211,7 +211,7 @@ func (e *Editor) deleteSelection() {
 	e.selecting = false
 }
 
-// CanCopy, CanCut and CanPaste implement core.ClipboardAccess: a read-only
+// CanCopy, CanCut and CanPaste implement core.ClipboardTarget: a read-only
 // editor (a results or message view) can be copied from, never cut or pasted
 // into.
 func (e *Editor) CanCopy() bool  { return e.HasSelection() }

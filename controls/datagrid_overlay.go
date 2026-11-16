@@ -179,7 +179,7 @@ func (g *DataGrid) Paste(text string) {}
 
 func (g *DataGrid) SelectAll() { g.viewer.SelectAll() }
 
-// CanCopy, CanCut and CanPaste implement core.ClipboardAccess: only the open
+// CanCopy, CanCut and CanPaste implement core.ClipboardTarget: only the open
 // viewer's selection is a clipboard selection (a host copying the cell under the
 // cursor without one does so itself), and nothing here is editable.
 func (g *DataGrid) CanCopy() bool      { return g.viewer.CanCopy() }

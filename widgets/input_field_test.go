@@ -507,3 +507,23 @@ func TestDisabledInputFieldRefusesClipboardEdits(t *testing.T) {
 		t.Errorf("password: CanCopy=%v CanCut=%v CanPaste=%v, want false false true", pw.CanCopy(), pw.CanCut(), pw.CanPaste())
 	}
 }
+
+// A TAB pasted from a grid row becomes a space; ESC, BEL and the rest are
+// dropped. Typing cannot enter them and Draw skips them, so kept they were
+// invisible in the value and sent on with it.
+func TestInputFieldPasteStripsControlCharacters(t *testing.T) {
+	f := newTestInputField("")
+	var changes []string
+	f.OnChange = func(v string) { changes = append(changes, v) }
+	f.Paste("a\tb\x1bc\x07d\x00e\u0085f")
+	if want := "a bcdef"; f.Value() != want {
+		t.Fatalf("Paste: value %q, want %q", f.Value(), want)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("OnChange fired %d times, want 1", len(changes))
+	}
+	f.Paste("\x1b\x07")
+	if f.Value() != "a bcdef" || len(changes) != 1 {
+		t.Fatalf("Paste of only control characters: value %q, %d OnChange, want unchanged and none", f.Value(), len(changes))
+	}
+}

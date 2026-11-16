@@ -75,13 +75,13 @@ func (p *PropertySheet) SelectAll() {
 	}
 }
 
-// CanCopy, CanCut and CanPaste implement core.ClipboardAccess over the focused
+// CanCopy, CanCut and CanPaste implement core.ClipboardTarget over the focused
 // row, matching what HasSelection, Cut and Paste above would do: Copy takes the
 // field's selection or else the row's whole value; Cut and Paste need an
 // editable field and a form not locked for an Apply.
 func (p *PropertySheet) CanCopy() bool {
 	if cr, ok := p.focusedClipboardRow(); ok && cr.HasSelection() {
-		return canClipboard(cr, core.ClipboardAccess.CanCopy)
+		return cr.CanCopy()
 	}
 	txt, ok := p.currentCopyText()
 	return ok && txt != ""
@@ -89,28 +89,19 @@ func (p *PropertySheet) CanCopy() bool {
 
 func (p *PropertySheet) CanCut() bool {
 	cr, ok := p.focusedClipboardRow()
-	return ok && !p.formLocked() && cr.HasSelection() && canClipboard(cr, core.ClipboardAccess.CanCut)
+	return ok && !p.formLocked() && cr.HasSelection() && cr.CanCut()
 }
 
 func (p *PropertySheet) CanPaste() bool {
 	cr, ok := p.focusedClipboardRow()
-	return ok && !p.formLocked() && canClipboard(cr, core.ClipboardAccess.CanPaste)
+	return ok && !p.formLocked() && cr.CanPaste()
 }
 
 // CanSelectAll is false on a row that is copied whole (a static or flat row, a
 // checkbox): it has no selection for Select All to make.
 func (p *PropertySheet) CanSelectAll() bool {
 	cr, ok := p.focusedClipboardRow()
-	return ok && canClipboard(cr, core.ClipboardAccess.CanSelectAll)
-}
-
-// canClipboard asks row's core.ClipboardAccess; a row without one is taken as
-// editable, as core.ClipboardAccess says.
-func canClipboard(row ClipboardRow, can func(core.ClipboardAccess) bool) bool {
-	if a, ok := row.(core.ClipboardAccess); ok {
-		return can(a)
-	}
-	return true
+	return ok && cr.CanSelectAll()
 }
 
 // FocusClipboardTargetAt implements core.ClipboardFocuser: a right-click on a
