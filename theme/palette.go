@@ -207,8 +207,8 @@ var Default = Palette{
 	DialogTextDim:       tcell.NewRGBColor(150, 150, 150),
 	DialogTextHighlight: tcell.NewRGBColor(255, 255, 255),
 	DialogLine:          tcell.NewRGBColor(63, 63, 70),
-	DialogAccent:        tcell.NewRGBColor(0, 122, 204),
-	DialogError:         tcell.NewRGBColor(220, 50, 50),
+	DialogAccent:        tcell.NewRGBColor(86, 156, 214),  // the keyword blue; 0,122,204 read 3.0:1 here
+	DialogError:         tcell.NewRGBColor(244, 135, 113), // VS Code dark errorForeground; 220,50,50 read 3.0:1
 	DialogWarning:       tcell.NewRGBColor(220, 180, 50),
 
 	ButtonBg:         tcell.NewRGBColor(63, 63, 70),
@@ -247,8 +247,9 @@ var Default = Palette{
 	ChartHeading:   tcell.NewRGBColor(78, 205, 196),
 }
 
-// mcColors is the 16-colour set a Midnight Commander skin names, plus the two
-// off-panel shades mc itself lacks. RGB, not the ANSI palette indices: DimArea
+// mcColors is the 16-colour set a Midnight Commander skin names, plus the
+// off-panel shades mc itself lacks and the dim and error text for its light
+// grey dialogs. RGB, not the ANSI palette indices: DimArea
 // blends colours and needs their RGB values, and a terminal palette would make
 // the theme vary by terminal.
 type mcColors struct {
@@ -256,6 +257,11 @@ type mcColors struct {
 	BrightBlue, BrightGreen, BrightCyan, BrightRed, BrightMagenta tcell.Color
 	Yellow, White                                                 tcell.Color
 	PanelShade, RowShade                                          tcell.Color // TreeHover, GridRowAlt
+	// DialogDim and DialogRed are hint and error text on the LightGray dialog:
+	// Gray and Red in Tango, darker shades in VGA, where Gray (3.2:1) and Red
+	// (3.3:1) on LightGray fall below WCAG AA. mc draws neither (its dialogs
+	// have no hints; its errors are white on a red dialog).
+	DialogDim, DialogRed tcell.Color
 }
 
 // vgaColors are the VGA text-mode colours.
@@ -277,6 +283,8 @@ var vgaColors = mcColors{
 	White:         tcell.NewRGBColor(255, 255, 255),
 	PanelShade:    tcell.NewRGBColor(0, 0, 120),
 	RowShade:      tcell.NewRGBColor(0, 0, 140),
+	DialogDim:     tcell.NewRGBColor(60, 60, 60),
+	DialogRed:     tcell.NewRGBColor(128, 0, 0),
 }
 
 // tangoColors are the Tango terminal palette (the xfce4-terminal and GNOME
@@ -299,6 +307,8 @@ var tangoColors = mcColors{
 	White:         tcell.NewRGBColor(238, 238, 236),
 	PanelShade:    tcell.NewRGBColor(42, 84, 138),
 	RowShade:      tcell.NewRGBColor(46, 91, 150),
+	DialogDim:     tcell.NewRGBColor(85, 87, 83),
+	DialogRed:     tcell.NewRGBColor(204, 0, 0),
 }
 
 // MC follows mc's default skin rendered in the Tango terminal palette: the
@@ -339,7 +349,7 @@ func mcSkin(c mcColors) Palette {
 		MenuHover:         c.Black,
 		MenuSelectedText:  c.White,
 		MenuText:          c.Black,
-		MenuTextDim:       c.Gray,
+		MenuTextDim:       c.Black, // mc's menuinactive; Gray on Cyan read 2.1-2.6:1
 		MenuLine:          c.White,
 		MenuTextHighlight: c.Black,
 
@@ -368,11 +378,11 @@ func mcSkin(c mcColors) Palette {
 		DialogTitle:         c.Blue,
 		DialogOverlay:       c.Black,
 		DialogText:          c.Black,
-		DialogTextDim:       c.Gray,
+		DialogTextDim:       c.DialogDim,
 		DialogTextHighlight: c.Blue,
 		DialogLine:          c.Gray,
 		DialogAccent:        c.Blue,
-		DialogError:         c.Red,
+		DialogError:         c.DialogRed,
 		DialogWarning:       c.Brown,
 
 		ButtonBg:         c.LightGray,
@@ -438,7 +448,7 @@ var Light = Palette{
 	MenuHover:         tcell.NewRGBColor(220, 230, 244),
 	MenuSelectedText:  tcell.NewRGBColor(255, 255, 255),
 	MenuText:          tcell.NewRGBColor(30, 30, 30),
-	MenuTextDim:       tcell.NewRGBColor(110, 110, 110),
+	MenuTextDim:       tcell.NewRGBColor(105, 105, 105),
 	MenuLine:          tcell.NewRGBColor(204, 206, 219),
 	MenuTextHighlight: tcell.NewRGBColor(0, 100, 100),
 
@@ -467,10 +477,10 @@ var Light = Palette{
 	DialogTitle:         tcell.NewRGBColor(0, 0, 0),
 	DialogOverlay:       tcell.NewRGBColor(128, 128, 128),
 	DialogText:          tcell.NewRGBColor(30, 30, 30),
-	DialogTextDim:       tcell.NewRGBColor(110, 110, 110),
+	DialogTextDim:       tcell.NewRGBColor(105, 105, 105),
 	DialogTextHighlight: tcell.NewRGBColor(0, 0, 0),
 	DialogLine:          tcell.NewRGBColor(204, 206, 219),
-	DialogAccent:        tcell.NewRGBColor(0, 122, 204),
+	DialogAccent:        tcell.NewRGBColor(0, 106, 177), // VS Code light textLink; 0,122,204 read 4.0:1 here
 	DialogError:         tcell.NewRGBColor(196, 30, 30),
 	DialogWarning:       tcell.NewRGBColor(170, 110, 0),
 
