@@ -37,11 +37,20 @@ func PropertySection(caption string) PropertyRow {
 
 // PropertiesDialog renders a scrollable table of PropertyRows.
 // It embeds ModalDialog to inherit all focus-trap behaviour.
+//
+// One value row at a time carries a cursor (Up/Down, Home/End, a click), and
+// the dialog is a read-only core.ClipboardHost over it: the host's Copy takes
+// that row's Value, and a right-click on a row (core.ClipboardFocuser) moves
+// the cursor there before the host's Copy menu opens. Section rows are never
+// the cursor's, so there is always a value under it when any row has one.
 type PropertiesDialog struct {
 	ModalDialog
 	rows   []PropertyRow
 	scroll int
 	keyW   int
+	// cursor indexes rows; -1 when no row holds a value (empty, or sections
+	// only).
+	cursor int
 
 	// OnClose, when set, runs after the user closes the dialog (Escape, Enter,
 	// Close), for a host still filling it in the background.
@@ -68,6 +77,7 @@ func (d *PropertiesDialog) ShowPropertiesSized(title string, rows []PropertyRow,
 	d.SetTitle(title)
 	d.rows = rows
 	d.scroll = 0
+	d.cursor = d.nextValueRow(0, 1)
 	d.keyW = propsKeyW
 	for _, r := range rows {
 		if r.Section {
@@ -143,10 +153,17 @@ func (d *PropertiesDialog) Draw(s tcell.Screen) {
 			core.DrawTextClipped(s, inner.X+1, y, inner.W-2, secStyle, " "+pr.Key+" ")
 			continue
 		}
-		core.FillRect(s, core.Rect{X: inner.X, Y: y, W: inner.W, H: 1}, ' ', valStyle)
-		core.DrawTextClipped(s, inner.X+1, y, keyW, keyStyle, pr.Key)
-		core.PutRune(s, inner.X+keyW+2, y, '|', valStyle)
-		core.DrawTextClipped(s, inner.X+keyW+4, y, inner.W-keyW-4, valStyle, pr.Value)
+		ks, vs := keyStyle, valStyle
+		if idx == d.cursor {
+			// The whole row, key included, so the cursor reads at a glance; the
+			// value is what Copy takes.
+			vs = theme.StyleSelected()
+			ks = vs.Bold(true)
+		}
+		core.FillRect(s, core.Rect{X: inner.X, Y: y, W: inner.W, H: 1}, ' ', vs)
+		core.DrawTextClipped(s, inner.X+1, y, keyW, ks, pr.Key)
+		core.PutRune(s, inner.X+keyW+2, y, '|', vs)
+		core.DrawTextClipped(s, inner.X+keyW+4, y, inner.W-keyW-4, vs, pr.Value)
 	}
 	if len(d.rows) > dataH {
 		d.DrawContentScrollbar(s, inner.Y+2, dataH, len(d.rows), d.scroll)
@@ -175,15 +192,64 @@ func (d *PropertiesDialog) HandleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyEscape, tcell.KeyEnter:
 		d.close()
 	case tcell.KeyUp:
-		if d.scroll > 0 {
-			d.scroll--
-		}
+		d.moveCursor(d.nextValueRow(d.cursor-1, -1), -1, dataH)
 	case tcell.KeyDown:
-		if d.scroll+dataH < len(d.rows) {
-			d.scroll++
-		}
+		d.moveCursor(d.nextValueRow(d.cursor+1, 1), 1, dataH)
+	case tcell.KeyHome:
+		d.moveCursor(d.nextValueRow(0, 1), -1, dataH)
+	case tcell.KeyEnd:
+		d.moveCursor(d.nextValueRow(len(d.rows)-1, -1), 1, dataH)
 	}
 	return true
+}
+
+// nextValueRow returns the first non-section row from i stepping by dir, or -1.
+func (d *PropertiesDialog) nextValueRow(i, dir int) int {
+	for ; i >= 0 && i < len(d.rows); i += dir {
+		if !d.rows[i].Section {
+			return i
+		}
+	}
+	return -1
+}
+
+// moveCursor puts the cursor on row to (when there is one) and scrolls it into
+// view. With no value row further in direction dir it still scrolls one row
+// that way, so a section heading or trailing rows past the last value (above
+// the first) can be brought on screen.
+func (d *PropertiesDialog) moveCursor(to, dir, dataH int) {
+	maxScroll := max(0, len(d.rows)-dataH)
+	if to < 0 {
+		d.scroll = min(maxScroll, max(0, d.scroll+dir))
+		return
+	}
+	d.cursor = to
+	// A section heading directly above the first value row scrolls in with it.
+	top := to
+	if top > 0 && d.nextValueRow(0, 1) == to {
+		top = 0
+	}
+	if top < d.scroll {
+		d.scroll = top
+	}
+	if to >= d.scroll+dataH {
+		d.scroll = to - dataH + 1
+	}
+	d.scroll = min(maxScroll, max(0, d.scroll))
+}
+
+// rowAt returns the index of the value row drawn at screen cell (x, y), or -1.
+func (d *PropertiesDialog) rowAt(x, y int) int {
+	inner := d.InnerRect()
+	row := y - (inner.Y + 2)
+	if x < inner.X || x >= inner.X+inner.W || row < 0 || row >= propsDataH(inner) {
+		return -1
+	}
+	idx := d.scroll + row
+	if idx >= len(d.rows) || d.rows[idx].Section {
+		return -1
+	}
+	return idx
 }
 
 // HandleMouse handles mouse events.
@@ -204,6 +270,10 @@ func (d *PropertiesDialog) HandleMouse(ev *tcell.EventMouse) bool {
 		return true
 	}
 	switch ev.Buttons() {
+	case tcell.Button1:
+		if idx := d.rowAt(ev.Position()); idx >= 0 {
+			d.cursor = idx
+		}
 	case tcell.WheelUp:
 		d.scroll = max(0, d.scroll-core.WheelRows)
 	case tcell.WheelDown:
@@ -211,3 +281,51 @@ func (d *PropertiesDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	}
 	return true
 }
+
+// FocusedClipboardTarget implements core.ClipboardHost: the dialog itself,
+// copying the value under the cursor.
+func (d *PropertiesDialog) FocusedClipboardTarget() core.ClipboardTarget { return d }
+
+// ClipboardTargetToken implements core.ClipboardTargetTokener: the host hands
+// back itself, so the cursor row is the identity of what it copies.
+func (d *PropertiesDialog) ClipboardTargetToken() any { return d.cursor }
+
+// FocusClipboardTargetAt implements core.ClipboardFocuser: a right-click on a
+// value row moves the cursor there, so the host's Copy takes that value.
+func (d *PropertiesDialog) FocusClipboardTargetAt(x, y int) bool {
+	idx := d.rowAt(x, y)
+	if !d.visible || idx < 0 {
+		return false
+	}
+	d.cursor = idx
+	return true
+}
+
+// HasSelection and the methods below make the dialog a read-only
+// core.ClipboardTarget: the selection is the cursor row's whole Value.
+func (d *PropertiesDialog) HasSelection() bool {
+	return d.visible && d.cursor >= 0 && d.cursor < len(d.rows)
+}
+
+// SelectedText returns the cursor row's Value — the value alone, not
+// "Key: Value", which is what someone copying a version or URL wants.
+func (d *PropertiesDialog) SelectedText() string {
+	if !d.HasSelection() {
+		return ""
+	}
+	return d.rows[d.cursor].Value
+}
+
+// Cut returns "" and removes nothing: the dialog is read-only.
+func (d *PropertiesDialog) Cut() string { return "" }
+
+// Paste is a no-op: the dialog is read-only.
+func (d *PropertiesDialog) Paste(string) {}
+
+// SelectAll is a no-op: a row is copied whole and there is nothing to extend.
+func (d *PropertiesDialog) SelectAll() {}
+
+func (d *PropertiesDialog) CanCopy() bool      { return d.SelectedText() != "" }
+func (d *PropertiesDialog) CanCut() bool       { return false }
+func (d *PropertiesDialog) CanPaste() bool     { return false }
+func (d *PropertiesDialog) CanSelectAll() bool { return false }

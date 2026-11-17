@@ -162,3 +162,48 @@ func TestPropertiesDialogFittedShowsTheLongestValueWhole(t *testing.T) {
 		t.Errorf("dialog width = %d for short rows, want the default %d", got, propsDefaultW)
 	}
 }
+
+// The dialog is a read-only clipboard host: Copy takes the cursor row's Value
+// alone, the cursor skips section headings, and a click or right-click on a
+// row moves it there.
+func TestPropertiesDialogCopiesTheCursorRowsValue(t *testing.T) {
+	scr := tuikittest.NewScreen(80, 30)
+	d := NewPropertiesDialog(scr)
+	d.ShowProperties("About", []PropertyRow{
+		PropertySection("Application"),
+		{Key: "Name", Value: "app"},
+		PropertySection("License"),
+		{Key: "License", Value: "MIT"},
+	})
+	var _ core.ClipboardHost = d
+	var _ core.ClipboardFocuser = d
+	var _ core.ClipboardTargetTokener = d
+	if got := d.FocusedClipboardTarget().SelectedText(); got != "app" {
+		t.Fatalf("initial copy = %q, want the first value row's %q", got, "app")
+	}
+	d.HandleKey(tcell.NewEventKey(tcell.KeyDown, "", tcell.ModNone))
+	if got := d.SelectedText(); got != "MIT" {
+		t.Errorf("after Down copy = %q, want %q (the section heading is skipped)", got, "MIT")
+	}
+	if d.CanCut() || d.CanPaste() || !d.CanCopy() {
+		t.Error("a read-only dialog offers Copy only")
+	}
+
+	inner := d.InnerRect()
+	nameY := inner.Y + 2 + 1 // row 0 is the Application heading
+	d.HandleMouse(tcell.NewEventMouse(inner.X+3, nameY, tcell.Button1, tcell.ModNone))
+	if got := d.SelectedText(); got != "app" {
+		t.Errorf("after clicking the Name row copy = %q, want %q", got, "app")
+	}
+	if d.FocusClipboardTargetAt(inner.X+3, inner.Y+2) {
+		t.Error("a right-click on a section heading must not claim a target")
+	}
+	if !d.FocusClipboardTargetAt(inner.X+3, inner.Y+2+3) || d.SelectedText() != "MIT" {
+		t.Errorf("right-click on the License row: copy = %q, want %q", d.SelectedText(), "MIT")
+	}
+
+	d.Hide()
+	if d.HasSelection() {
+		t.Error("a hidden dialog has nothing to copy")
+	}
+}
