@@ -11,7 +11,8 @@ import (
 
 func TestFitMessageFloorsAtMinWidthForAShortMessage(t *testing.T) {
 	d := &ModalDialog{}
-	d.InitModal(tuikittest.NewScreen(200, 50), "Alert", alertDialogMinW, alertDialogBaseH)
+	d.InitModal("Alert", alertDialogMinW, alertDialogBaseH)
+	d.SetScreen(tuikittest.NewScreen(200, 50))
 
 	w, h, lines := d.fitMessage("Hi", alertDialogMinW, alertDialogBaseH)
 
@@ -28,7 +29,8 @@ func TestFitMessageFloorsAtMinWidthForAShortMessage(t *testing.T) {
 
 func TestFitMessageGrowsToFitOnOneLineUnderTheCap(t *testing.T) {
 	d := &ModalDialog{}
-	d.InitModal(tuikittest.NewScreen(200, 50), "Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.InitModal("Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.SetScreen(tuikittest.NewScreen(200, 50))
 
 	msg := `Take "SomeVeryLongDatabaseName" offline? Existing connections to it will be rolled back.`
 	wantNatural := core.DisplayWidth(msg) + messageBoxOverhead
@@ -49,7 +51,8 @@ func TestFitMessageGrowsToFitOnOneLineUnderTheCap(t *testing.T) {
 func TestFitMessageWrapsInsteadOfExceedingTwoThirdsOfScreenWidth(t *testing.T) {
 	scr := tuikittest.NewScreen(120, 40)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.InitModal("Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.SetScreen(scr)
 
 	sw, _ := scr.Size()
 	maxW := sw * maxMessageWidthNum / maxMessageWidthDen // 80
@@ -87,7 +90,8 @@ func TestFitMessageCapsHeightToTheScreenAndEllipsizesTheLastLine(t *testing.T) {
 	// message would otherwise wrap to.
 	scr := tuikittest.NewScreen(120, confirmDialogBaseH)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.InitModal("Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.SetScreen(scr)
 
 	words := make([]string, 40)
 	for i := range words {
@@ -117,7 +121,7 @@ func TestFitMessageCapsHeightToTheScreenAndEllipsizesTheLastLine(t *testing.T) {
 
 func TestFitMessageWithNilScreenSkipsTheCap(t *testing.T) {
 	d := &ModalDialog{}
-	d.InitModal(nil, "Alert", alertDialogMinW, alertDialogBaseH)
+	d.InitModal("Alert", alertDialogMinW, alertDialogBaseH)
 
 	msg := strings.Repeat("word ", 40)
 	w, h, lines := d.fitMessage(msg, alertDialogMinW, alertDialogBaseH)
@@ -146,22 +150,22 @@ func TestMessageDialogsKeepLineBreaks(t *testing.T) {
 	scr := tuikittest.NewScreen(200, 50)
 	cases := map[string]func() []string{
 		"Alert": func() []string {
-			d := NewAlertDialog(scr)
+			d := withScreen(NewAlertDialog(), scr)
 			d.ShowAlert("t", msg)
 			return d.msgLines
 		},
 		"Confirm": func() []string {
-			d := NewConfirmDialog(scr)
+			d := withScreen(NewConfirmDialog(), scr)
 			d.ShowConfirm("t", msg, func(bool) {})
 			return d.msgLines
 		},
 		"TypedConfirm": func() []string {
-			d := NewTypedConfirmDialog(scr)
+			d := withScreen(NewTypedConfirmDialog(), scr)
 			d.ShowTypedConfirm("t", msg, "DROP", func(bool) {})
 			return d.msgLines
 		},
 		"Prompt": func() []string {
-			d := NewPromptDialog(scr)
+			d := withScreen(NewPromptDialog(), scr)
 			d.ShowPrompt("t", msg, "Name:", "", func(string) {})
 			return d.msgLines
 		},
@@ -177,7 +181,8 @@ func TestMessageDialogsKeepLineBreaks(t *testing.T) {
 // is not wrapped, and is not sized to the sum of them.
 func TestFitMessageSizesToTheWidestParagraph(t *testing.T) {
 	d := &ModalDialog{}
-	d.InitModal(tuikittest.NewScreen(200, 50), "Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.InitModal("Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.SetScreen(tuikittest.NewScreen(200, 50))
 
 	long := strings.Repeat("x", 100) // wider than confirmDialogMinW, under 2/3 of 200
 	w, h, lines := d.fitMessage("short\n"+long, confirmDialogMinW, confirmDialogBaseH)
@@ -195,7 +200,8 @@ func TestFitMessageSizesToTheWidestParagraph(t *testing.T) {
 func TestFitMessageCapsParagraphsToTheScreen(t *testing.T) {
 	scr := tuikittest.NewScreen(120, confirmDialogBaseH+1) // room for 2 lines
 	d := &ModalDialog{}
-	d.InitModal(scr, "Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.InitModal("Confirm", confirmDialogMinW, confirmDialogBaseH)
+	d.SetScreen(scr)
 
 	_, _, lines := d.fitMessage("one\n\nthree\nfour", confirmDialogMinW, confirmDialogBaseH)
 

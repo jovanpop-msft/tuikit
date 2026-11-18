@@ -1,6 +1,7 @@
 package dialogs
 
 import (
+	"cmp"
 	"slices"
 
 	"github.com/gdamore/tcell/v3"
@@ -33,14 +34,41 @@ type Dialog interface {
 // where the answer matters: before routing an event (a callback it ran may have
 // opened one) and before drawing (the event may have opened or closed one).
 type Stack struct {
-	all  []Dialog // every registered dialog, in registration order
-	open []Dialog // the open ones, bottom to top
+	all    []Dialog     // every registered dialog, in registration order
+	open   []Dialog     // the open ones, bottom to top
+	screen tcell.Screen // given to every registered dialog (SetScreen)
 }
 
-// Register adds d to the dialogs Sync considers. A dialog that is shown but
-// never registered is never drawn and never gets input. Registration order is
-// only a tie-break for dialogs that became visible since the same Sync.
-func (st *Stack) Register(d Dialog) { st.all = append(st.all, d) }
+// screenUser is a Dialog that centres and sizes itself against a screen —
+// every one embedding ModalDialog.
+type screenUser interface{ SetScreen(s tcell.Screen) }
+
+// SetScreen sets the screen the Stack's dialogs centre on and size against,
+// passing it to every dialog registered so far and, from then on, to each
+// dialog as it is registered (ModalDialog.SetScreen). A host calls it once,
+// before showing a dialog; dialog constructors take no screen. A Dialog that
+// does not embed ModalDialog is left alone.
+func (st *Stack) SetScreen(s tcell.Screen) {
+	st.screen = s
+	for _, d := range st.all {
+		if u, ok := d.(screenUser); ok {
+			u.SetScreen(s)
+		}
+	}
+}
+
+// Register adds d to the dialogs Sync considers and gives it the Stack's
+// screen, if SetScreen has set one. A dialog that is shown but never
+// registered is never drawn and never gets input. A host may register a
+// dialog at any time, such as when it first builds one on demand: Sync stacks
+// newly opened dialogs by when they were shown (ModalDialog.ShowOrder), not by
+// when they were registered.
+func (st *Stack) Register(d Dialog) {
+	if u, ok := d.(screenUser); ok && st.screen != nil {
+		u.SetScreen(st.screen)
+	}
+	st.all = append(st.all, d)
+}
 
 // Registered returns every registered dialog, open or not, in registration
 // order — for settings a host pushes to all of them. The slice is the Stack's
@@ -50,13 +78,33 @@ func (st *Stack) Registered() []Dialog { return st.all }
 // Sync reconciles the stack with each dialog's Visible: an entry no longer
 // visible is dropped, and a registered dialog that became visible is pushed as
 // the new top. Re-showing an open dialog leaves its place unchanged.
+//
+// Several dialogs that opened since the previous Sync (a callback that shows a
+// confirmation and then an error, say) go on in the order they were shown, the
+// last shown on top. Registration order once decided it, which put the right
+// dialog on top only for a host that registered every dialog up front in the
+// order they nest; a host that builds dialogs lazily registers them in
+// first-use order. A Dialog without ShowOrder (one not embedding ModalDialog)
+// counts as shown before every one that has it.
 func (st *Stack) Sync() {
 	st.open = slices.DeleteFunc(st.open, func(d Dialog) bool { return !d.Visible() })
+	n := len(st.open)
 	for _, d := range st.all {
 		if d.Visible() && !slices.Contains(st.open, d) {
 			st.open = append(st.open, d)
 		}
 	}
+	slices.SortStableFunc(st.open[n:], func(x, y Dialog) int {
+		return cmp.Compare(showOrder(x), showOrder(y))
+	})
+}
+
+// showOrder is d's ModalDialog.ShowOrder, or 0 for a Dialog without one.
+func showOrder(d Dialog) uint64 {
+	if o, ok := d.(interface{ ShowOrder() uint64 }); ok {
+		return o.ShowOrder()
+	}
+	return 0
 }
 
 // Top returns the frontmost open dialog as of the last Sync, or nil. It alone

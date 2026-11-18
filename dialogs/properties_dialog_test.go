@@ -12,7 +12,7 @@ import (
 
 func newTestPropertiesDialog(n int) *PropertiesDialog {
 	scr := tuikittest.NewScreen(80, 30)
-	d := NewPropertiesDialog(scr)
+	d := withScreen(NewPropertiesDialog(), scr)
 	rows := make([]PropertyRow, n)
 	for i := range rows {
 		rows[i] = PropertyRow{Key: "Key" + strconv.Itoa(i), Value: "Value" + strconv.Itoa(i)}
@@ -81,7 +81,7 @@ func TestPropertiesDialogScrollReachesLastRow(t *testing.T) {
 // ShowProperties afterwards returns the dialog to its default size.
 func TestPropertiesDialogSizedWidensKeyColumn(t *testing.T) {
 	scr := tuikittest.NewScreen(120, 50)
-	d := NewPropertiesDialog(scr)
+	d := withScreen(NewPropertiesDialog(), scr)
 	medium := "A Key Of Twenty-Eight Chars." // 28 columns
 	d.ShowPropertiesSized("Big", []PropertyRow{
 		PropertySection("A Section Caption Longer Than Any Key Here"),
@@ -149,7 +149,7 @@ func TestPropertiesDialogWheelDoesNotScrollPastEnd(t *testing.T) {
 // and keeps the default width when everything already fits.
 func TestPropertiesDialogFittedShowsTheLongestValueWhole(t *testing.T) {
 	scr := tuikittest.NewScreen(200, 50)
-	d := NewPropertiesDialog(scr)
+	d := withScreen(NewPropertiesDialog(), scr)
 	long := "dbo.a_rather_long_procedure_name (SQL_STORED_PROCEDURE, caller-dependent)"
 	d.ShowPropertiesFitted("Deps", []PropertyRow{{Key: "Depends On", Value: "dbo.t (USER_TABLE)"}, {Key: "Depends On", Value: long}})
 	inner := d.InnerRect()
@@ -168,7 +168,7 @@ func TestPropertiesDialogFittedShowsTheLongestValueWhole(t *testing.T) {
 // row moves it there.
 func TestPropertiesDialogCopiesTheCursorRowsValue(t *testing.T) {
 	scr := tuikittest.NewScreen(80, 30)
-	d := NewPropertiesDialog(scr)
+	d := withScreen(NewPropertiesDialog(), scr)
 	d.ShowProperties("About", []PropertyRow{
 		PropertySection("Application"),
 		{Key: "Name", Value: "app"},

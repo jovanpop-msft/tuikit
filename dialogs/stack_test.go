@@ -19,7 +19,8 @@ type stackDialog struct {
 
 func newStackDialog(s tcell.Screen, w, h int) *stackDialog {
 	d := &stackDialog{}
-	d.InitModal(s, "t", w, h)
+	d.InitModal("t", w, h)
+	d.SetScreen(s)
 	return d
 }
 
@@ -173,6 +174,79 @@ func TestADialogDoesNotInheritAnotherDialogsClip(t *testing.T) {
 		}
 		if got := scr.RuneAt(r.X, r.Bottom()-1); got == ' ' || got == 0 {
 			t.Errorf("viaStack=%v: child's bottom-left corner = %q, clipped by the parent", viaStack, got)
+		}
+	}
+}
+
+// Dialogs that open in the same tick stack by when they were shown, not by
+// registration order: a host that builds dialogs on first use registers them
+// in an order that says nothing about how they nest, so a confirmation shown
+// over a dialog registered after it would open underneath.
+func TestStackSyncStacksSameTickOpeningsInShowOrder(t *testing.T) {
+	scr := tuikittest.NewScreen(80, 24)
+	a, b, c := newStackDialog(scr, 20, 6), newStackDialog(scr, 20, 6), newStackDialog(scr, 20, 6)
+	var st Stack
+	st.Register(a)
+	st.Register(b)
+	st.Register(c)
+
+	c.Show()
+	a.Show()
+	b.Show()
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{c, a, b}) {
+		t.Fatalf("Open = %v, want [c a b] (show order)", got)
+	}
+
+	// Newcomers sort among themselves only: dialogs already open keep their
+	// places below them, however recently they were re-shown.
+	b.Hide()
+	st.Sync()
+	b.Show()
+	c.Show() // already open: a re-show must not lift it over b
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{c, a, b}) {
+		t.Errorf("Open = %v, want [c a b]", got)
+	}
+
+	// A dialog registered after it was shown still stacks by show order.
+	d, e := newStackDialog(scr, 20, 6), newStackDialog(scr, 20, 6)
+	e.Show()
+	d.Show()
+	st.Register(d)
+	st.Register(e)
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{c, a, b, e, d}) {
+		t.Errorf("Open = %v, want [c a b e d]", got)
+	}
+}
+
+// withScreen gives d the screen a Stack would (ModalDialog.SetScreen), for a
+// test that shows a dialog without registering it.
+func withScreen[T interface{ SetScreen(tcell.Screen) }](d T, s tcell.Screen) T {
+	d.SetScreen(s)
+	return d
+}
+
+// A dialog takes its screen from the Stack: registered before SetScreen or
+// after, it is centred on that screen without its constructor seeing one.
+func TestStackGivesItsScreenToEveryRegisteredDialog(t *testing.T) {
+	scr := tuikittest.NewScreen(80, 24)
+	early, late := newStackDialog(nil, 20, 6), newStackDialog(nil, 20, 6)
+	if early.Screen() != nil {
+		t.Fatal("a dialog built without a screen has one")
+	}
+	var st Stack
+	st.Register(early)
+	st.SetScreen(scr)
+	st.Register(late)
+	want := core.Rect{X: 30, Y: 9, W: 20, H: 6}
+	for name, d := range map[string]*stackDialog{"registered before SetScreen": early, "registered after": late} {
+		if d.Screen() != scr {
+			t.Errorf("%s: Screen() = %v, want the Stack's", name, d.Screen())
+		}
+		if got := d.Rect(); got != want {
+			t.Errorf("%s: Rect() = %+v, want %+v (centred on 80x24)", name, got, want)
 		}
 	}
 }

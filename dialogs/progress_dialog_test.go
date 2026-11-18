@@ -27,7 +27,7 @@ func cancelColumn(t *testing.T, scr *tuikittest.Screen, d *ProgressDialog) int {
 // the button greys to say so.
 func TestProgressDialogCancelAsksOnceAndStaysOpen(t *testing.T) {
 	scr := tuikittest.NewScreen(120, 40)
-	d := NewProgressDialog(scr)
+	d := withScreen(NewProgressDialog(), scr)
 	calls := 0
 	d.ShowProgress("Delete Table", `Deleting table "dbo.Orders"...`, func() { calls++ })
 
@@ -76,7 +76,7 @@ func TestProgressDialogCancelAsksOnceAndStaysOpen(t *testing.T) {
 // and the mouse, and the reason is on screen.
 func TestProgressDialogUninterruptibleRefusesCancel(t *testing.T) {
 	scr := tuikittest.NewScreen(120, 40)
-	d := NewProgressDialog(scr)
+	d := withScreen(NewProgressDialog(), scr)
 	reason := "A failover cannot be safely interrupted."
 	d.ShowUninterruptible("Fail Over", `Failing "ag1" over to node2...`, reason)
 	d.Draw(scr)
@@ -111,7 +111,7 @@ func TestProgressDialogSwallowsInputBeforeItIsRevealed(t *testing.T) {
 	scr := tuikittest.NewScreen(120, 40)
 	scr.Fill('~', tcell.StyleDefault) // so a drawn space shows too
 	blank := scr.Snapshot()
-	d := NewProgressDialog(scr)
+	d := withScreen(NewProgressDialog(), scr)
 	d.RevealDelay = time.Hour
 	calls := 0
 	d.ShowProgress("Delete Table", "Deleting...", func() { calls++ })
@@ -141,7 +141,7 @@ func TestProgressDialogSwallowsInputBeforeItIsRevealed(t *testing.T) {
 // but does not shrink back for the next short one, or the box would jump
 // sideways under the user. A new showing starts from its own message.
 func TestProgressDialogNeverNarrowsWithinAShowing(t *testing.T) {
-	d := NewProgressDialog(tuikittest.NewScreen(200, 50))
+	d := withScreen(NewProgressDialog(), tuikittest.NewScreen(200, 50))
 	d.ShowProgress("Delete Objects", "Deleting 1 of 3: a", func() {})
 	base := d.Rect().W
 	d.SetMessage("Deleting 2 of 3: " + strings.Repeat("x", 80))

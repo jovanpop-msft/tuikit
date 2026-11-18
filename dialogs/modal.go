@@ -1,6 +1,8 @@
 package dialogs
 
 import (
+	"sync/atomic"
+
 	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
 	"github.com/radix29/tuikit/theme"
@@ -17,7 +19,8 @@ type ModalDialog struct {
 	reqW, reqH int // last size passed to InitModal/SetSize, pre-clamp
 	title      string
 	visible    bool
-	screen     tcell.Screen // needed for Size() during recentre
+	screen     tcell.Screen // set by SetScreen (normally Stack.Register); sizes recentre
+	shownAt    uint64       // showSeq at the last Show (see ShowOrder)
 
 	// press is held from the first Button1 of a gesture until its release,
 	// wherever that press landed, and fresh says whether the event being routed
@@ -38,17 +41,27 @@ type ModalDialog struct {
 	sbDragging bool
 }
 
-// InitModal sets up the dialog for the given screen, title and size. Call it
-// from the embedding type's constructor.
-func (d *ModalDialog) InitModal(s tcell.Screen, title string, w, h int) {
-	d.screen = s
+// InitModal sets up the dialog's title and requested size. Call it from the
+// embedding type's constructor. The dialog has no screen yet, so it is not
+// centred until SetScreen (which Stack.Register calls) gives it one.
+func (d *ModalDialog) InitModal(title string, w, h int) {
 	d.title = title
 	d.reqW, d.reqH = w, h
 	d.recentre()
 }
 
-// Screen is the screen InitModal was given (nil for a dialog built without
-// one, as tests do) — what an embedding type sizes itself against.
+// SetScreen gives the dialog the screen it centres on and sizes against, and
+// recentres it. Stack.Register calls it with the Stack's screen (see
+// Stack.SetScreen), so a host that registers its dialogs never calls it; a
+// dialog shown outside a Stack (a test) needs it to be centred. A dialog whose
+// size depends on the screen derives that size in Show and Relayout, not here.
+func (d *ModalDialog) SetScreen(s tcell.Screen) {
+	d.screen = s
+	d.recentre()
+}
+
+// Screen is the screen SetScreen was given (nil before it, as for a dialog a
+// test builds without one) — what an embedding type sizes itself against.
 func (d *ModalDialog) Screen() tcell.Screen { return d.screen }
 
 // SetSize resizes the dialog and recentres it. A dialog whose content grows with
@@ -88,11 +101,23 @@ func (d *ModalDialog) Show() {
 	d.fresh, d.tracked = false, nil
 	d.sbDragging = false
 	d.visible = true
+	d.shownAt = showSeq.Add(1)
 }
+
+// showSeq numbers every Show across all dialogs, for ShowOrder. Atomic only so
+// that dialogs in separate hosts (or tests running in parallel) never race on
+// it; within one host every Show is on its UI goroutine.
+var showSeq atomic.Uint64
+
+// ShowOrder is when the dialog was last shown, as a number that increases with
+// every Show of any dialog (0: never shown). Stack.Sync stacks dialogs that
+// opened since its previous call in this order, so the one shown last is on
+// top whatever order they were registered in.
+func (d *ModalDialog) ShowOrder() uint64 { return d.shownAt }
 
 // Relayout re-fits the dialog to the current screen size. The host calls it on
 // every terminal resize for each open dialog: recentre otherwise runs only from
-// InitModal/SetSize/Show, so the dialog would keep its old rect, drawing its
+// InitModal/SetScreen/SetSize/Show, so the dialog would keep its old rect, drawing its
 // border and button row off-screen while still swallowing every key. A dialog
 // whose size depends on the screen overrides this to recompute and call SetSize.
 func (d *ModalDialog) Relayout() { d.recentre() }

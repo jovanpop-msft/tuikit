@@ -13,7 +13,7 @@ import (
 // both guard against that — recentre/recomputeSize simply no-op) and a
 // fixed size, so tests don't depend on an actual terminal.
 func newTestSheet(pages ...string) *PropertySheet {
-	p := NewPropertySheet(nil, "Test Properties")
+	p := NewPropertySheet("Test Properties")
 	p.SetSize(90, 28)
 	p.SetPages(pages)
 	return p

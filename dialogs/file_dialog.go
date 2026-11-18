@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
 	"github.com/radix29/tuikit/widgets"
 )
@@ -92,9 +91,9 @@ type FileDialog struct {
 }
 
 // NewFileDialog creates the dialog.
-func NewFileDialog(s tcell.Screen) *FileDialog {
+func NewFileDialog() *FileDialog {
 	d := &FileDialog{}
-	d.InitModal(s, Strings.OpenFileTitle, fileDialogW, fileDialogH)
+	d.InitModal(Strings.OpenFileTitle, fileDialogW, fileDialogH)
 	// Both labels padded to the wider, so the two fields line up whatever the
 	// host's Strings say.
 	labelW := max(core.DisplayWidth(Strings.PathLabel), core.DisplayWidth(Strings.FileLabel))
