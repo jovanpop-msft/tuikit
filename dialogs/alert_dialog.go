@@ -25,9 +25,9 @@ type AlertDialog struct {
 }
 
 // NewAlertDialog creates an AlertDialog.
-func NewAlertDialog(s tcell.Screen) *AlertDialog {
+func NewAlertDialog() *AlertDialog {
 	d := new(AlertDialog{})
-	d.InitModal(s, Strings.AlertTitle, alertDialogMinW, alertDialogBaseH)
+	d.InitModal(Strings.AlertTitle, alertDialogMinW, alertDialogBaseH)
 	return d
 }
 

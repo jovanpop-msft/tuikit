@@ -56,9 +56,9 @@ type PromptDialog struct {
 }
 
 // NewPromptDialog creates a PromptDialog.
-func NewPromptDialog(s tcell.Screen) *PromptDialog {
+func NewPromptDialog() *PromptDialog {
 	d := &PromptDialog{}
-	d.InitModal(s, Strings.PromptTitle, promptW, promptH)
+	d.InitModal(Strings.PromptTitle, promptW, promptH)
 	return d
 }
 

@@ -3,7 +3,6 @@ package propsheet
 import (
 	"time"
 
-	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/controls"
 	"github.com/radix29/tuikit/core"
 	"github.com/radix29/tuikit/dialogs"
@@ -217,9 +216,9 @@ type PropertySheet struct {
 
 // NewPropertySheet creates an empty PropertySheet. Call SetPages, SetHeader and
 // wire the On* callbacks before the first Show.
-func NewPropertySheet(s tcell.Screen, title string) *PropertySheet {
+func NewPropertySheet(title string) *PropertySheet {
 	p := &PropertySheet{current: -1, hints: Strings.Hints}
-	p.InitModal(s, title, 90, 28)
+	p.InitModal(title, 90, 28)
 	p.pageList = controls.NewListBox()
 	p.pageList.OnSelect = func(i int) { p.SelectPage(i) }
 	p.pageList.OnActivate = func(i int) { p.SelectPage(i); p.setZone(zoneForm) }

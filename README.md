@@ -99,12 +99,15 @@ tuikit/
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
 │               mockscreen.go (NewMockScreen: tcell's own screen on a mock
 │               terminal), events.go (Key/Rune/Mouse/Press/Release builders)
-└── propsheet/  PropertySheet — multi-page editable properties dialog framework
-              — doc.go, common.go, rows.go (Section/Note/Hint/Static),
-                textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
-                gridrow.go, editorrow.go, togglegrid.go, listeditor.go
-                (ListEditor: grid + detail rows + Add/Remove), form.go; sheet.go
-                (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
+├── propsheet/  PropertySheet — multi-page editable properties dialog framework
+│             — doc.go, common.go, rows.go (Section/Note/Hint/Static),
+│               textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
+│               gridrow.go, editorrow.go, togglegrid.go, listeditor.go
+│               (ListEditor: grid + detail rows + Add/Remove), form.go; sheet.go
+│               (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
+└── examples/   Runnable programs, not library packages (nothing imports them)
+    └── spindemo/  every widgets.Spinner animated side by side, for picking
+                   one by eye — go run ./examples/spindemo
 ```
 
 Every sub-package: one file per type or tight group, plus `doc.go`.
@@ -122,6 +125,7 @@ controls         → controls/editor
 layout           —
 dialogs          → widgets
 propsheet        → dialogs, controls, controls/editor, widgets
+examples/*       → whatever they demonstrate; nothing imports them
 ```
 
 - **layout** is a leaf over `core`/`theme`: `PanelManager`'s tab bar takes its
@@ -157,7 +161,8 @@ rects and hand them down. Two shapes differ, both one row high: the
 `SpinnerByName`) has no start time or goroutine: `Frame(elapsed)`/
 `FrameSince(start)`, redrawn from the host's clock. All frames of a Spinner
 share one display width, or a narrower frame leaves the previous one's tail
-(`TestSpinnerFramesAreUniformWidth`). goSSMS's `cmd/spindemo` shows them all.
+(`TestSpinnerFramesAreUniformWidth`). `go run ./examples/spindemo`
+shows them all.
 
 **One control contract, as small interfaces in `core`** (`control.go`):
 `Focusable` (`Focus(bool)`/`Focused() bool`), `Enabler`
@@ -288,9 +293,9 @@ type MyDialog struct {
     // your fields...
 }
 
-func NewMyDialog(screen tcell.Screen) *MyDialog {
+func NewMyDialog() *MyDialog {
     d := &MyDialog{}
-    d.InitModal(screen, "My Dialog", 50, 12)
+    d.InitModal("My Dialog", 50, 12)   // no screen: the Stack gives it one
     return d
 }
 
@@ -312,7 +317,9 @@ func (d *MyDialog) HandleMouse(ev *tcell.EventMouse) bool {
 }
 ```
 
-Register every dialog once in a `dialogs.Stack` and let it host them: call
+Give a `dialogs.Stack` the screen once (`SetScreen`), register every dialog
+once — up front, or when the host first builds it; registering hands it the
+screen it centres on — and let the Stack host them: call
 `Sync` before routing an event and before drawing, then `Draw`, `Relayout` (on
 resize), `HandleKey`/`HandleMouse` (they report whether a dialog consumed the
 event) and `ClipboardTarget`. **Clip contract:** a dialog clamped to a small

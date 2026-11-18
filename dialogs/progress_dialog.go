@@ -68,13 +68,13 @@ type ProgressDialog struct {
 }
 
 // NewProgressDialog creates a ProgressDialog.
-func NewProgressDialog(s tcell.Screen) *ProgressDialog {
+func NewProgressDialog() *ProgressDialog {
 	d := new(ProgressDialog{
 		Spinner:        widgets.SpinnerBraille,
 		ElapsedText:    Strings.Elapsed,
 		CancellingText: Strings.Cancelling,
 	})
-	d.InitModal(s, Strings.WorkingTitle, progressDialogMinW, progressDialogBaseH)
+	d.InitModal(Strings.WorkingTitle, progressDialogMinW, progressDialogBaseH)
 	return d
 }
 

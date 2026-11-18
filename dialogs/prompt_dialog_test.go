@@ -8,7 +8,7 @@ import (
 )
 
 func showTestPrompt(onAccept func(string)) *PromptDialog {
-	d := NewPromptDialog(nil)
+	d := NewPromptDialog()
 	d.ShowPrompt("Rename Table", "New name for table \"dbo.Orders\":", "Name:", "Orders", onAccept)
 	return d
 }

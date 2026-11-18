@@ -9,7 +9,7 @@ import (
 
 func newTestConfirmDialog(t *testing.T) *ConfirmDialog {
 	t.Helper()
-	return NewConfirmDialog(nil)
+	return NewConfirmDialog()
 }
 
 // Escape on a plain Yes/No prompt still answers No, as it always has —
@@ -203,7 +203,7 @@ func TestConfirmOptionDoesNotSurviveTheNextShowing(t *testing.T) {
 // press the box, drift off the dialog, release, and the next click on it does
 // nothing at all.
 func TestConfirmOptionReleaseOutsideDoesNotStrandTheLatch(t *testing.T) {
-	d := NewConfirmDialog(tuikittest.NewScreen(200, 50))
+	d := withScreen(NewConfirmDialog(), tuikittest.NewScreen(200, 50))
 	d.ShowConfirmOption("Delete Table", "Delete dbo.Orders?", "Cascade", false, func(bool, bool) {})
 	// Where Draw puts it; laying it out by hand keeps this about the routing.
 	inner := d.InnerRect()

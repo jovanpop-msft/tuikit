@@ -9,7 +9,7 @@ import (
 
 func newTestTypedConfirmDialog(t *testing.T) *TypedConfirmDialog {
 	t.Helper()
-	return NewTypedConfirmDialog(nil)
+	return NewTypedConfirmDialog()
 }
 
 func TestTypedConfirmDialogMismatchRefusesAndStaysOpen(t *testing.T) {

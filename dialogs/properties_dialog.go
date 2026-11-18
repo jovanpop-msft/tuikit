@@ -58,9 +58,9 @@ type PropertiesDialog struct {
 }
 
 // NewPropertiesDialog creates a PropertiesDialog.
-func NewPropertiesDialog(s tcell.Screen) *PropertiesDialog {
+func NewPropertiesDialog() *PropertiesDialog {
 	d := new(PropertiesDialog{keyW: propsKeyW})
-	d.InitModal(s, Strings.PropertiesTitle, propsDefaultW, propsDefaultH)
+	d.InitModal(Strings.PropertiesTitle, propsDefaultW, propsDefaultH)
 	return d
 }
 

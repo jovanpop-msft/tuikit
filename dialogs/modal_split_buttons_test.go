@@ -19,7 +19,8 @@ func splitDialog(t *testing.T, w int) (*ModalDialog, *tuikittest.Screen) {
 	t.Helper()
 	rec := tuikittest.NewScreen(w, 30)
 	d := &ModalDialog{}
-	d.InitModal(rec, "Connect", 78, 20)
+	d.InitModal("Connect", 78, 20)
+	d.SetScreen(rec)
 	d.Show()
 	cs := core.NewClipScreen(rec)
 	d.DrawBase(cs)

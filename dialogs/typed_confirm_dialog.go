@@ -58,9 +58,9 @@ type TypedConfirmDialog struct {
 }
 
 // NewTypedConfirmDialog creates a TypedConfirmDialog.
-func NewTypedConfirmDialog(s tcell.Screen) *TypedConfirmDialog {
+func NewTypedConfirmDialog() *TypedConfirmDialog {
 	d := &TypedConfirmDialog{}
-	d.InitModal(s, Strings.ConfirmTitle, typedConfirmW, typedConfirmH)
+	d.InitModal(Strings.ConfirmTitle, typedConfirmW, typedConfirmH)
 	return d
 }
 

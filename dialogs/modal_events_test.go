@@ -21,33 +21,33 @@ func TestAVisibleModalConsumesEveryMouseEvent(t *testing.T) {
 	}
 	cases := map[string]func(t *testing.T) modal{
 		"alert": func(*testing.T) modal {
-			d := NewAlertDialog(scr())
+			d := withScreen(NewAlertDialog(), scr())
 			d.ShowAlert("Error", "Something went wrong.")
 			return d
 		},
 		"confirm": func(*testing.T) modal {
-			d := NewConfirmDialog(scr())
+			d := withScreen(NewConfirmDialog(), scr())
 			d.ShowConfirm("Delete Table", "Delete dbo.Orders?", func(bool) {})
 			return d
 		},
 		"prompt": func(*testing.T) modal {
-			d := NewPromptDialog(scr())
+			d := withScreen(NewPromptDialog(), scr())
 			d.ShowPrompt("Rename", "New name:", "Name", "orders", func(string) {})
 			return d
 		},
 		"typed confirm": func(*testing.T) modal {
-			d := NewTypedConfirmDialog(scr())
+			d := withScreen(NewTypedConfirmDialog(), scr())
 			d.ShowTypedConfirm("Drop Database", "Type the name to confirm.", "sales", func(bool) {})
 			return d
 		},
 		"progress": func(*testing.T) modal {
-			d := NewProgressDialog(scr())
+			d := withScreen(NewProgressDialog(), scr())
 			d.RevealDelay = 0
 			d.ShowProgress("Delete Table", "Deleting...", func() {})
 			return d
 		},
 		"properties": func(*testing.T) modal {
-			d := NewPropertiesDialog(scr())
+			d := withScreen(NewPropertiesDialog(), scr())
 			d.ShowProperties("Properties", []PropertyRow{{Key: "k", Value: "v"}})
 			return d
 		},

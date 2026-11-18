@@ -17,7 +17,7 @@ func newScrollableSheet(t *testing.T) *PropertySheet {
 	// no-ops without a screen, leaving p.rect zero-sized — and then
 	// ConsumeOutsideClick treats every event as an outside click and swallows
 	// it before any of the routing under test runs.
-	p := NewPropertySheet(tuikittest.NewScreen(100, 40), "Test Properties")
+	p := withScreen(NewPropertySheet("Test Properties"), tuikittest.NewScreen(100, 40))
 	p.SetSize(90, 28)
 	p.SetPages([]string{"General", "Options"})
 	p.Show()

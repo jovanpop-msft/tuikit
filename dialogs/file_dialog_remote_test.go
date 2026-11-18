@@ -78,7 +78,7 @@ func (f *fakeWindowsFS) Exists(path string) (bool, bool, error) {
 // write, reported without any error.
 func TestShowSaveOnReturnsServerPathUnchanged(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 
 	var chosen string
 	d.ShowSaveOn(fs, "Backup Destination", `C:\Backup\backup_test_full.bak`, func(p string) { chosen = p })
@@ -99,7 +99,7 @@ func TestShowSaveOnReturnsServerPathUnchanged(t *testing.T) {
 // not the client-joined mixture of the two conventions.
 func TestActivateSelectedOnRemoteFileReturnsServerPath(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 
 	var chosen string
 	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, func(p string) { chosen = p })
@@ -116,7 +116,7 @@ func TestActivateSelectedOnRemoteFileReturnsServerPath(t *testing.T) {
 // up through "..", and up again from the drive root into the drive list.
 func TestRemoteNavigation(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, nil)
 
 	if d.entries[0].Name != ".." {
@@ -158,7 +158,7 @@ func TestRemoteNavigation(t *testing.T) {
 // share one FileDialog instance, and a leaked remote FileSystem would send
 // File > Open Query File to the server's disks.
 func TestShowOpenResetsToLocalFileSystem(t *testing.T) {
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	d.ShowOpenOn(newFakeWindowsFS(), "Select Backup File", `C:\Backup\`, nil)
 	d.ShowOpen("Open Query File", t.TempDir(), nil)
 
@@ -173,7 +173,7 @@ func TestShowOpenResetsToLocalFileSystem(t *testing.T) {
 func TestSaveOverwritePromptsWhenExistsCannotAnswer(t *testing.T) {
 	fs := newFakeWindowsFS()
 	fs.existsErr = errors.New("i/o timeout")
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 
 	prompted, chosen := "", ""
 	d.OnConfirmOverwrite = func(path string, proceed func()) { prompted = path }
@@ -195,7 +195,7 @@ func TestSaveOverwritePromptsWhenExistsCannotAnswer(t *testing.T) {
 // prompt for a name that genuinely isn't there.
 func TestSaveNewNameSkipsPromptOnRemote(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 
 	prompted, chosen := "", ""
 	d.OnConfirmOverwrite = func(path string, proceed func()) { prompted = path }
@@ -215,7 +215,7 @@ func TestSaveNewNameSkipsPromptOnRemote(t *testing.T) {
 // a re-list here is a network round trip the user waits out mid-word.
 func TestCompletionInCurrentDirCostsNoExtraList(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	d.ShowSaveOn(fs, "Backup Destination", `C:\Backup\`, nil)
 
 	afterLoad := fs.listCalls
@@ -237,7 +237,7 @@ func TestCompletionInCurrentDirCostsNoExtraList(t *testing.T) {
 // completion silently stops working in any directory.
 func TestCompletionIgnoresTheParentRow(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	d.ShowSaveOn(fs, "Backup Destination", `C:\Backup\`, nil)
 
 	d.nameField.SetValue("")
@@ -255,7 +255,7 @@ func TestCompletionIgnoresTheParentRow(t *testing.T) {
 // displaying.
 func TestNavigateTypedUsesTheListingItAlreadyHas(t *testing.T) {
 	fs := newFakeWindowsFS()
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, nil)
 
 	before := fs.existsCalls
@@ -351,7 +351,7 @@ func TestFileDialogWrapsALongListingError(t *testing.T) {
 
 	fs := newFakeWindowsFS()
 	rec := tuikittest.NewScreen(120, 40)
-	d := NewFileDialog(rec)
+	d := withScreen(NewFileDialog(), rec)
 	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, nil)
 	d.listErr = msg
 	d.entries = nil
@@ -386,7 +386,7 @@ func TestFileDialogLeavesAnUnknownSizeAndDateBlank(t *testing.T) {
 		{Name: "empty.bak"},
 	}
 	rec := tuikittest.NewScreen(120, 40)
-	d := NewFileDialog(rec)
+	d := withScreen(NewFileDialog(), rec)
 	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, nil)
 	d.Draw(rec)
 
@@ -436,7 +436,7 @@ func (shownScreen) Show() {}
 func TestFileDialogBusyFrameStaysInsideAClampedDialog(t *testing.T) {
 	scr := tuikittest.NewScreen(30, 12)
 	scr.Fill('.', tcell.StyleDefault)
-	d := NewFileDialog(shownScreen{scr})
+	d := withScreen(NewFileDialog(), shownScreen{scr})
 	d.ShowOpenOn(blockingFS{newFakeWindowsFS()}, "Select Backup File", `C:\Backup\`, func(string) {})
 	r := d.Rect()
 	if !d.clamped() {
@@ -463,7 +463,7 @@ func TestFileDialogDrawsTheLargestPossibleFileSize(t *testing.T) {
 	fs := newFakeWindowsFS()
 	fs.tree[`C:\Backup`] = []FileEntry{{Name: "sparse.bak", Size: math.MaxInt64}}
 	rec := tuikittest.NewScreen(120, 40)
-	d := NewFileDialog(rec)
+	d := withScreen(NewFileDialog(), rec)
 	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, nil)
 	d.Draw(rec)
 

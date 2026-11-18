@@ -37,20 +37,20 @@ func TestADragOntoTheButtonRowDoesNotPressAButton(t *testing.T) {
 
 	cases := map[string]func(t *testing.T) rig{
 		"alert, from the message": func(t *testing.T) rig {
-			d := NewAlertDialog(scr())
+			d := withScreen(NewAlertDialog(), scr())
 			d.ShowAlert("Error", "Something went wrong.")
 			in := d.InnerRect()
 			return rig{d, [2]int{in.X + 2, in.Y + 1}, buttonAt(&d.ModalDialog, []string{"OK"}),
 				func() bool { return !d.Visible() }}
 		},
 		"alert, from outside the box": func(t *testing.T) rig {
-			d := NewAlertDialog(scr())
+			d := withScreen(NewAlertDialog(), scr())
 			d.ShowAlert("Error", "Something went wrong.")
 			return rig{d, [2]int{d.Rect().X - 2, d.Rect().Y - 2}, buttonAt(&d.ModalDialog, []string{"OK"}),
 				func() bool { return !d.Visible() }}
 		},
 		"confirm, from the option checkbox": func(t *testing.T) rig {
-			d := NewConfirmDialog(scr())
+			d := withScreen(NewConfirmDialog(), scr())
 			answered := false
 			d.ShowConfirmOption("Delete Table", "Delete dbo.Orders?", "Cascade", false,
 				func(bool, bool) { answered = true })
@@ -61,7 +61,7 @@ func TestADragOntoTheButtonRowDoesNotPressAButton(t *testing.T) {
 				func() bool { return answered }}
 		},
 		"prompt, from the message": func(t *testing.T) rig {
-			d := NewPromptDialog(scr())
+			d := withScreen(NewPromptDialog(), scr())
 			accepted := false
 			d.ShowPrompt("Rename", "New name:", "Name", "orders", func(string) { accepted = true })
 			in := d.InnerRect()
@@ -69,7 +69,7 @@ func TestADragOntoTheButtonRowDoesNotPressAButton(t *testing.T) {
 				func() bool { return accepted }}
 		},
 		"typed confirm, from the message": func(t *testing.T) rig {
-			d := NewTypedConfirmDialog(scr())
+			d := withScreen(NewTypedConfirmDialog(), scr())
 			answered := false
 			d.ShowTypedConfirm("Drop Database", "Type the name to confirm.", "sales", func(bool) { answered = true })
 			in := d.InnerRect()
@@ -78,7 +78,7 @@ func TestADragOntoTheButtonRowDoesNotPressAButton(t *testing.T) {
 				func() bool { return answered }}
 		},
 		"progress, from the message": func(t *testing.T) rig {
-			d := NewProgressDialog(scr())
+			d := withScreen(NewProgressDialog(), scr())
 			d.RevealDelay = 0
 			cancelled := false
 			d.ShowProgress("Delete Table", "Deleting...", func() { cancelled = true })
@@ -87,7 +87,7 @@ func TestADragOntoTheButtonRowDoesNotPressAButton(t *testing.T) {
 				func() bool { return cancelled }}
 		},
 		"properties, from the scrollbar": func(t *testing.T) rig {
-			d := NewPropertiesDialog(scr())
+			d := withScreen(NewPropertiesDialog(), scr())
 			rows := make([]PropertyRow, 100)
 			for i := range rows {
 				rows[i] = PropertyRow{Key: "k", Value: "v"}
@@ -141,7 +141,8 @@ func TestADragOntoTheButtonRowDoesNotPressAButton(t *testing.T) {
 // ConsumeOutsideClick and ButtonClicked calling it again change nothing.
 func TestTrackPressSeesAPressBeforeConsumeOutsideClick(t *testing.T) {
 	d := &ModalDialog{}
-	d.InitModal(tuikittest.NewScreen(100, 30), "Backup", 60, 12)
+	d.InitModal("Backup", 60, 12)
+	d.SetScreen(tuikittest.NewScreen(100, 30))
 	d.Show()
 	labels := []string{"OK", "Cancel"}
 	x, y := d.ButtonRowStartX(labels)+2, d.ButtonRowY()

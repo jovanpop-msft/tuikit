@@ -116,6 +116,8 @@ var tuikitLayers = map[string][]string{
 	"dialogs":         {"core", "theme", "widgets"},
 	"propsheet":       {"core", "theme", "widgets", "dialogs", "controls", "controls/editor"},
 	"tuikittest":      {"core"},
+	// examples/ are runnable programs, not library packages; nothing imports them.
+	"examples/spindemo": {"core", "theme", "widgets"},
 }
 
 // TestTuikitLayering pins the one-way graph between tuikit's own packages:

@@ -15,7 +15,7 @@ import (
 // the live buttons back and takes the spinner away.
 func TestSheetApplyingGreysButtonsAndShowsSpinner(t *testing.T) {
 	scr := tuikittest.NewScreen(100, 32)
-	p := NewPropertySheet(scr, "Test Properties")
+	p := withScreen(NewPropertySheet("Test Properties"), scr)
 	p.SetPages([]string{"General"})
 	p.Show()
 
@@ -57,7 +57,7 @@ func TestSheetApplyingGreysButtonsAndShowsSpinner(t *testing.T) {
 // label says the run is winding down.
 func TestSheetApplyingLeavesCancelLiveWhenCancellable(t *testing.T) {
 	scr := tuikittest.NewScreen(100, 32)
-	p := NewPropertySheet(scr, "Test Properties")
+	p := withScreen(NewPropertySheet("Test Properties"), scr)
 	p.SetPages([]string{"General"})
 	p.Show()
 	p.OnCancelApply = func() {}
@@ -160,7 +160,7 @@ func TestSheetFormRefusesInputWhileApplying(t *testing.T) {
 // checkbox toggles on it.
 func TestSheetFormRefusesClicksWhileApplying(t *testing.T) {
 	// The screen and hand-set bounds are newScrollableSheet's, for its reasons.
-	p := NewPropertySheet(tuikittest.NewScreen(100, 40), "Test Properties")
+	p := withScreen(NewPropertySheet("Test Properties"), tuikittest.NewScreen(100, 40))
 	p.SetSize(90, 28)
 	p.SetPages([]string{"General"})
 	p.Show()

@@ -26,7 +26,7 @@ func newTestFileDialog(t *testing.T) (*FileDialog, string) {
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	return d, dir
 }
 
@@ -57,7 +57,7 @@ func TestFileDialogLoadDirSortsDirsBeforeFiles(t *testing.T) {
 }
 
 func TestFileDialogLoadDirAtRootOmitsParent(t *testing.T) {
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	root, err := filepath.Abs(string(filepath.Separator))
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestFileDialogScrollbarDragScrolls(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d := NewFileDialog(nil)
+	d := NewFileDialog()
 	d.ShowOpen("Open File", filepath.Join(dir, "filea.txt"), func(string) {})
 	d.rect = core.Rect{X: 0, Y: 0, W: 60, H: 20}
 	if len(d.entries) <= fileListRows {
@@ -395,7 +395,7 @@ func TestFormatFileSizeHelper(t *testing.T) {
 func newPlacedFileDialog(t *testing.T) (*FileDialog, string) {
 	t.Helper()
 	_, dir := newTestFileDialog(t)
-	d := NewFileDialog(tuikittest.NewScreen(120, 40))
+	d := withScreen(NewFileDialog(), tuikittest.NewScreen(120, 40))
 	d.ShowOpen("Open", dir, func(string) {})
 	// Mirrors the two SetBounds calls in file_dialog_draw.go, which only run
 	// under Draw — if those move, this must move with them.

@@ -12,7 +12,8 @@ import (
 func TestModalDialogClampsToSmallScreen(t *testing.T) {
 	scr := tuikittest.NewScreen(40, 10)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Confirm", 78, 9)
+	d.InitModal("Confirm", 78, 9)
+	d.SetScreen(scr)
 
 	if d.rect.W != 40 {
 		t.Errorf("rect.W = %d, want 40 (clamped to screen width)", d.rect.W)
@@ -25,7 +26,8 @@ func TestModalDialogClampsToSmallScreen(t *testing.T) {
 func TestModalDialogRestoresFullSizeOnLargerScreen(t *testing.T) {
 	scr := tuikittest.NewScreen(40, 10)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Confirm", 78, 9)
+	d.InitModal("Confirm", 78, 9)
+	d.SetScreen(scr)
 	if d.rect.W != 40 {
 		t.Fatalf("rect.W = %d, want 40 (clamped)", d.rect.W)
 	}
@@ -49,7 +51,8 @@ func TestModalDialogRestoresFullSizeOnLargerScreen(t *testing.T) {
 func TestModalDialogRelayoutFollowsAShrinkingScreen(t *testing.T) {
 	scr := tuikittest.NewScreen(120, 34)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Help", 78, 20)
+	d.InitModal("Help", 78, 20)
+	d.SetScreen(scr)
 	d.Show()
 
 	scr.SetSize(60, 12)
@@ -71,7 +74,8 @@ func TestModalDialogRelayoutFollowsAShrinkingScreen(t *testing.T) {
 func TestModalDialogRelayoutRestoresRequestedSizeOnAGrowingScreen(t *testing.T) {
 	scr := tuikittest.NewScreen(40, 10)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Help", 78, 20)
+	d.InitModal("Help", 78, 20)
+	d.SetScreen(scr)
 	d.Show()
 
 	scr.SetSize(200, 50)
@@ -89,7 +93,7 @@ func TestModalDialogRelayoutRestoresRequestedSizeOnAGrowingScreen(t *testing.T) 
 // width, so following a resize means re-wrapping, not only recentring.
 func TestAlertDialogRelayoutRewrapsMessage(t *testing.T) {
 	scr := tuikittest.NewScreen(200, 50)
-	d := NewAlertDialog(scr)
+	d := withScreen(NewAlertDialog(), scr)
 	msg := strings.Repeat("word ", 30)
 	d.ShowAlert("Alert", msg)
 	wide := len(d.msgLines)
@@ -109,7 +113,8 @@ func TestAlertDialogRelayoutRewrapsMessage(t *testing.T) {
 func TestModalDialogScrollbarDrag(t *testing.T) {
 	scr := tuikittest.NewScreen(80, 24)
 	d := &ModalDialog{}
-	d.InitModal(scr, "Test", 40, 12)
+	d.InitModal("Test", 40, 12)
+	d.SetScreen(scr)
 
 	trackX, trackY, trackH, total := d.Rect().Right()-1, d.Rect().Y+1, 10, 30
 	var scroll int
@@ -146,7 +151,8 @@ func TestModalDialogScrollbarDrag(t *testing.T) {
 // reopened dialog looks frozen. Show has to start clean.
 func TestModalDialogLatchDoesNotSurviveIntoTheNextShowing(t *testing.T) {
 	d := &ModalDialog{}
-	d.InitModal(tuikittest.NewScreen(100, 30), "Confirm", 60, 10)
+	d.InitModal("Confirm", 60, 10)
+	d.SetScreen(tuikittest.NewScreen(100, 30))
 	d.Show()
 
 	labels := []string{"Yes", "No"}
@@ -173,7 +179,8 @@ func TestModalDialogLatchDoesNotSurviveIntoTheNextShowing(t *testing.T) {
 func TestDrawBaseClipsContentOnAClampedRect(t *testing.T) {
 	rec := tuikittest.NewScreen(30, 8)
 	d := &ModalDialog{}
-	d.InitModal(rec, "Connect", 78, 20)
+	d.InitModal("Connect", 78, 20)
+	d.SetScreen(rec)
 	d.Show()
 
 	cs := core.NewClipScreen(rec)
@@ -212,7 +219,8 @@ func TestDrawBaseClipsContentOnAClampedRect(t *testing.T) {
 func TestDrawBaseDoesNotClipAtTheRequestedSize(t *testing.T) {
 	rec := tuikittest.NewScreen(100, 40)
 	d := &ModalDialog{}
-	d.InitModal(rec, "Connect", 78, 20)
+	d.InitModal("Connect", 78, 20)
+	d.SetScreen(rec)
 	d.Show()
 
 	cs := core.NewClipScreen(rec)
@@ -230,7 +238,8 @@ func TestDrawBaseDoesNotClipAtTheRequestedSize(t *testing.T) {
 func TestDrawButtonsClearsTheRowOnAClampedRect(t *testing.T) {
 	rec := tuikittest.NewScreen(30, 8)
 	d := &ModalDialog{}
-	d.InitModal(rec, "Connect", 78, 20)
+	d.InitModal("Connect", 78, 20)
+	d.SetScreen(rec)
 	d.Show()
 
 	cs := core.NewClipScreen(rec)
