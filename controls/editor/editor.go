@@ -396,6 +396,83 @@ func (e *Editor) SetLineBuffer(b *LineBuffer) {
 	e.resetForNewText()
 }
 
+// PrependLines inserts text's lines above line 0 and then, when keepMax > 0,
+// drops lines from the bottom until at most keepMax remain: a newest-first log
+// (a status history, a key trace) appending as it runs. Unlike SetText it keeps
+// the view. Cursor, selection anchor and an InSelection search scope move down
+// with the text they were on, so a selection still covers the same text and a
+// Copy after the prepend copies what it would have before. The scroll position
+// moves down too, unless it was at the top: a viewer who never scrolled keeps
+// seeing the newest line. Anything the trim cut off is clamped to the new last
+// line (a selection wholly inside the cut becomes empty).
+//
+// Programmatic, so it works on a read-only editor. It records no undo step and
+// clears the undo/redo history, whose row numbers it would invalidate; read-only
+// viewers, its intended callers, keep none. An empty document (one empty line,
+// as after SetText("")) is replaced rather than kept as a trailing blank line.
+// Empty text is a no-op apart from the trim.
+func (e *Editor) PrependLines(text string, keepMax int) {
+	k := 0
+	if text != "" {
+		lines := e.splitText(text)
+		k = len(lines)
+
+		// Wrapped, scrollRow counts visual rows: pin the logical line and column
+		// at the top of the view, as SetBounds does, and find it again after.
+		topRow, topCol := -1, 0
+		if e.wrapMode && e.scrollRow > 0 && e.rect.W > 0 {
+			if vls := e.buildVisualLines(e.wrapWidth()); e.scrollRow < len(vls) {
+				topRow, topCol = vls[e.scrollRow].row, vls[e.scrollRow].start
+			}
+		}
+
+		replaced := 0
+		if e.doc.Len() == 1 && len(e.doc.Line(0)) == 0 {
+			// The blank line SetText("") leaves is not content to keep below the
+			// new text. Nothing can be selected on it, so cursor and anchor stay
+			// at (0, 0), on the newest line, as after SetText.
+			replaced, k = 1, 0
+		}
+		e.doc.replaceRange(0, replaced, lines)
+
+		e.cursorRow += k
+		e.selAnchorRow += k
+		if e.search.selValid {
+			e.search.selStartRow += k
+			e.search.selEndRow += k
+		}
+		switch {
+		case topRow >= 0:
+			e.scrollRow = visualIndexForCursor(e.buildVisualLines(e.wrapWidth()), topRow+k, topCol)
+		case e.scrollRow > 0 && !e.wrapMode:
+			e.scrollRow += k
+		}
+	}
+
+	if keepMax > 0 && e.doc.Len() > keepMax {
+		e.doc.replaceRange(keepMax, e.doc.Len()-keepMax, nil)
+		last := e.doc.Len() - 1
+		if e.selAnchorRow > last {
+			e.selAnchorRow, e.selAnchorCol = last, len(e.doc.Line(last))
+		}
+		if e.cursorRow > last {
+			e.cursorRow, e.cursorCol = last, len(e.doc.Line(last))
+		}
+		if e.search.selValid {
+			if e.search.selStartRow > last {
+				e.search.selValid = false
+			} else if e.search.selEndRow > last {
+				e.search.selEndRow, e.search.selEndCol = last, len(e.doc.Line(last))
+			}
+		}
+	}
+
+	e.undoStack, e.redoStack, e.undoBytes, e.stepOpen = nil, nil, 0, false
+	e.closeCompletion()
+	e.completionSuppressed = false
+	e.scrollRow = core.Clamp(e.scrollRow, 0, max(0, e.scrollRows()-1))
+}
+
 // resetForNewText drops everything that referred to the previous document.
 func (e *Editor) resetForNewText() {
 	e.cursorRow, e.cursorCol, e.scrollRow, e.scrollCol = 0, 0, 0, 0

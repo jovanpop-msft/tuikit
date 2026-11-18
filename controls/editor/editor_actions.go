@@ -12,7 +12,9 @@ import (
 // Notepad++/Scintilla-style line and block actions for Editor. Every exported
 // method here is self-contained (pushes its own undo step, leaves the cursor
 // clamped and visible) because each is invoked from Editor.HandleKey and
-// directly from a Menu action closure, which bypasses HandleKey.
+// directly from a Menu action closure, which bypasses HandleKey. For the same
+// reason each mutator returns early on a read-only editor itself: HandleKey's
+// read-only filter never sees a menu or host call.
 // ---------------------------------------------------------------------------
 
 // affectedLineRange returns the row range a line/block action applies to: the
@@ -74,6 +76,9 @@ func (e *Editor) afterHistoryStep() {
 // selection) below itself, moving the cursor into the copy. Any selection
 // collapses.
 func (e *Editor) DuplicateLines() {
+	if e.readOnly {
+		return
+	}
 	sr, er := e.affectedLineRange()
 	// The copy goes in as an insertion of n rows below er, an empty span there:
 	// the undo step holds no lines at all, however large the document.
@@ -91,6 +96,9 @@ func (e *Editor) DuplicateLines() {
 // DeleteLines removes the current line (or every line spanned by the
 // selection). Any active selection collapses.
 func (e *Editor) DeleteLines() {
+	if e.readOnly {
+		return
+	}
 	sr, er := e.affectedLineRange()
 	e.pushUndoSpan(sr, er+1)
 	e.selecting, e.selBlock = false, false
@@ -108,6 +116,9 @@ func (e *Editor) DeleteLines() {
 // with the line above. No-op at the top. Any selection is preserved and shifts
 // with the moved lines.
 func (e *Editor) MoveLinesUp() {
+	if e.readOnly {
+		return
+	}
 	sr, er := e.affectedLineRange()
 	if sr == 0 {
 		return
@@ -127,6 +138,9 @@ func (e *Editor) MoveLinesUp() {
 // MoveLinesDown mirrors MoveLinesUp, swapping downward. No-op at the
 // bottom of the buffer.
 func (e *Editor) MoveLinesDown() {
+	if e.readOnly {
+		return
+	}
 	sr, er := e.affectedLineRange()
 	if er >= e.doc.Len()-1 {
 		return
@@ -249,6 +263,9 @@ func (e *Editor) leadingIndentForNewLine() int {
 // every line spanned by the selection). An active selection is preserved, its
 // columns shifted right on whichever row(s) the anchor/cursor sit.
 func (e *Editor) IndentLines() {
+	if e.readOnly {
+		return
+	}
 	sr, er := e.affectedLineRange()
 	e.pushUndoSpan(sr, er+1)
 	for r := sr; r <= er; r++ {
@@ -274,6 +291,9 @@ func (e *Editor) IndentLines() {
 // from the current line (or every line spanned by the selection). An active
 // selection is preserved, its columns shifted left by what was removed per row.
 func (e *Editor) DedentLines() {
+	if e.readOnly {
+		return
+	}
 	sr, er := e.affectedLineRange()
 	e.pushUndoSpan(sr, er+1)
 	for r := sr; r <= er; r++ {
@@ -373,6 +393,9 @@ func uncommentLine(line, prefix []rune) []rune {
 // columns approximately shifted by the net length change on the anchor/cursor rows
 // (a cursor inside leading whitespace can drift a column or two; accepted).
 func (e *Editor) ToggleLineComments() {
+	if e.readOnly {
+		return
+	}
 	prefix := e.lineComment
 	if len(prefix) == 0 {
 		return
@@ -412,6 +435,9 @@ func (e *Editor) ToggleLineComments() {
 // moved, and skipping it would leave an uppercased keyword in its old non-keyword
 // colour until some unrelated edit bumped the version.
 func (e *Editor) transformSelection(fn func(rune) rune) {
+	if e.readOnly {
+		return
+	}
 	if !e.HasSelection() {
 		return
 	}
@@ -449,7 +475,7 @@ func (e *Editor) transformSelection(fn func(rune) rune) {
 }
 
 // UppercaseSelection and LowercaseSelection convert the case of every rune in
-// the selection, in place. No-op without a selection.
+// the selection, in place. No-op without a selection or on a read-only editor.
 func (e *Editor) UppercaseSelection() { e.transformSelection(unicode.ToUpper) }
 func (e *Editor) LowercaseSelection() { e.transformSelection(unicode.ToLower) }
 
@@ -471,15 +497,29 @@ func (e *Editor) ReplaceText(text string) bool {
 	return true
 }
 
+// SelectedLineRange returns the rows, inclusive, that SelectedLinesText returns
+// and ReplaceSelectedLines rewrites: a linear selection's row span, less the row a
+// selection ending at column 0 stops on (affectedLineRange). ok is false where
+// those two refuse: no selection, or a block (column) selection. It builds no
+// text, so a host can cheaply check the selection still covers the rows it read
+// (Format Document's background run, every event).
+func (e *Editor) SelectedLineRange() (top, bottom int, ok bool) {
+	if !e.HasSelection() || e.selBlock {
+		return 0, 0, false
+	}
+	top, bottom = e.affectedLineRange()
+	return top, bottom, true
+}
+
 // SelectedLinesText returns the whole lines a linear selection touches (the
 // affectedLineRange rows, joined with "\n"): what a line-oriented rewrite such as
 // Format Document operates on. ok is false with no selection or a block (column)
 // selection, which has no line span to rewrite.
 func (e *Editor) SelectedLinesText() (text string, ok bool) {
-	if !e.HasSelection() || e.selBlock {
+	sr, er, ok := e.SelectedLineRange()
+	if !ok {
 		return "", false
 	}
-	sr, er := e.affectedLineRange()
 	var sb strings.Builder
 	for r := sr; r <= er; r++ {
 		if r > sr {
