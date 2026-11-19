@@ -455,3 +455,47 @@ func TestComboOpeningKeepsTheGestureLatch(t *testing.T) {
 		t.Fatal("the click that opened the combo did not latch the gesture")
 	}
 }
+
+// With no panels the tab bar shows EmptyText and no [v], but a click on the
+// arrow's columns used to open the combo anyway: Draw skipped the invisible
+// list while HandleKey swallowed every key and OverlayActive claimed every
+// mouse event, until the user happened to press Escape.
+func TestPanelManagerEmptyComboNeverOpens(t *testing.T) {
+	pm := NewPanelManager()
+	pm.SetBounds(0, 0, 80, 24)
+	pm.HandleMouse(tcell.NewEventMouse(78, 0, tcell.ButtonNone, tcell.ModNone))
+	pm.HandleMouse(tcell.NewEventMouse(78, 0, tcell.Button1, tcell.ModNone))
+	pm.HandleMouse(tcell.NewEventMouse(78, 0, tcell.ButtonNone, tcell.ModNone))
+	if pm.comboOpen {
+		t.Error("combo opened with no panels")
+	}
+	if pm.OverlayActive() {
+		t.Error("OverlayActive is true with no panels")
+	}
+	if pm.HandleKey(tcell.NewEventKey(tcell.KeyF5, "", tcell.ModNone)) {
+		t.Error("F5 was consumed by an empty PanelManager")
+	}
+	pm.setComboOpen(true)
+	if pm.comboOpen {
+		t.Error("setComboOpen(true) opened the combo with no panels")
+	}
+}
+
+// Closing the last panel while the drop-down is open (OnCloseTab, a host
+// command) must close the drop-down too, or the empty manager captures the
+// keyboard as above.
+func TestRemovingLastPanelClosesCombo(t *testing.T) {
+	pm, _ := openCombo(t, 2, 80, 24)
+	pm.RemovePanel(0)
+	if !pm.comboOpen {
+		t.Fatal("removing a non-last panel closed the combo")
+	}
+	pm.RemovePanel(0)
+	if pm.comboOpen || pm.OverlayActive() {
+		t.Errorf("after removing the last panel: comboOpen=%v OverlayActive=%v, want both false",
+			pm.comboOpen, pm.OverlayActive())
+	}
+	if pm.HandleKey(tcell.NewEventKey(tcell.KeyF5, "", tcell.ModNone)) {
+		t.Error("F5 was consumed after the last panel was removed")
+	}
+}

@@ -39,9 +39,12 @@ type TypedConfirmDialog struct {
 	message  string
 	msgLines []string
 	required string
-	status   string
-	input    *widgets.InputField
-	focus    typedConfirmFocus
+	// promptLines is the "Type … to confirm" prompt, wrapped to the dialog: the
+	// user must read the whole required text to type it, so it is never clipped.
+	promptLines []string
+	status      string
+	input       *widgets.InputField
+	focus       typedConfirmFocus
 
 	// drag owns the text-selection gesture a press in input starts; see
 	// FieldGesture.
@@ -66,9 +69,9 @@ func NewTypedConfirmDialog() *TypedConfirmDialog {
 
 // ShowTypedConfirm shows the dialog: message explains the action, required is
 // the exact text (case-insensitive, surrounding whitespace ignored) the user
-// must type before Confirm proceeds. Sizing follows fitMessage: one line where
-// it fits within 2/3 of the screen width, else wrapped and taller, pushing the
-// required-text line and input down.
+// must type before Confirm proceeds. Sizing follows fitMessage, widened for the
+// prompt and input (see layout): one line where it fits within 2/3 of the screen
+// width, else wrapped and taller, pushing the prompt and input down.
 func (d *TypedConfirmDialog) ShowTypedConfirm(title, message, required string, onConfirm func(bool)) {
 	d.OnConfirm = onConfirm
 	d.show(title, message, required, []string{Strings.Confirm, Strings.Cancel},
@@ -104,28 +107,96 @@ func (d *TypedConfirmDialog) show(title, message, required string, buttons []str
 	d.drag.Clear()
 	d.buttons, d.answers = buttons, answers
 	d.onAnswer = onAnswer
-	w, h, lines := d.fitMessage(message, typedConfirmW, typedConfirmH)
-	d.msgLines = lines
-	d.SetSize(w, h)
+	d.layout()
 	d.ModalDialog.Show()
 }
 
 // Message returns the question the dialog asks.
 func (d *TypedConfirmDialog) Message() string { return d.message }
 
-// Relayout re-wraps the message for the new screen width, then recentres.
-func (d *TypedConfirmDialog) Relayout() {
-	w, h, lines := d.fitMessage(d.message, typedConfirmW, typedConfirmH)
+// Relayout re-wraps the message and prompt for the new screen width, then
+// recentres.
+func (d *TypedConfirmDialog) Relayout() { d.layout() }
+
+// layout sizes the dialog to the widest of the message, the prompt and the input,
+// capped at fitMessage's fraction of the screen. Sizing from the message alone let
+// a long required name (SQL Server names run to 128 characters) push the input
+// through the right border and clip the prompt mid-name, so the user could not
+// read what this gate asks them to type. Past the cap the input is narrowed (it
+// scrolls) and the prompt wraps onto extra rows, which push the input down as
+// extra message lines do.
+func (d *TypedConfirmDialog) layout() {
+	prompt := fmt.Sprintf(Strings.TypeToConfirm, d.required)
+	inputW := max(20, core.DisplayWidth(d.required)+16)
+	// The input draws inputW+2 columns: its brackets.
+	minW := max(typedConfirmW, core.DisplayWidth(prompt)+messageBoxOverhead, inputW+2+messageBoxOverhead)
+	sw := 0
+	if d.screen != nil {
+		sw, _ = d.screen.Size()
+	}
+	if sw > 0 {
+		minW = min(minW, max(typedConfirmW, sw*maxMessageWidthNum/maxMessageWidthDen))
+	}
+	// The width does not depend on the height, so the first fit only finds it; the
+	// second caps the message's lines with the prompt's extra rows counted.
+	w, _, _ := d.fitMessage(d.message, minW, typedConfirmH)
+	if sw > 0 {
+		w = min(w, sw) // recentre's clamp
+	}
+	contentW := w - messageBoxOverhead
+	d.promptLines = wrapPrompt(prompt, d.required, contentW)
+	w, h, lines := d.fitMessage(d.message, minW, typedConfirmH+len(d.promptLines)-1)
 	d.msgLines = lines
+	d.input.SetWidth(min(inputW, contentW-2))
 	d.SetSize(w, h)
+}
+
+// wrapPrompt wraps prompt to w columns. WrapText breaks at spaces and hard-breaks
+// an unbroken token, but it collapses whitespace runs, so a required text with a
+// doubled, leading or trailing space (legal in a SQL Server name) is instead cut
+// at exact grapheme widths: a collapsed space would show the user a name they
+// cannot type to a match.
+func wrapPrompt(prompt, required string, w int) []string {
+	if w <= 0 || core.DisplayWidth(prompt) <= w {
+		return []string{prompt}
+	}
+	if strings.Join(strings.Fields(required), " ") == required {
+		return core.WrapText(prompt, w)
+	}
+	var lines []string
+	runes := []rune(prompt)
+	start, col := 0, 0
+	for i := 0; i < len(runes); {
+		end, gw := core.GraphemeAt(runes, i)
+		if col+gw > w && i > start {
+			lines = append(lines, string(runes[start:i]))
+			start, col = i, 0
+		}
+		col += gw
+		i = end
+	}
+	return append(lines, string(runes[start:]))
 }
 
 func (d *TypedConfirmDialog) syncFocus() {
 	d.input.Focus(d.focus == typedConfirmFocusInput)
 }
 
+// matched reports whether the typed text answers required, case-insensitively,
+// with surrounding whitespace ignored on both sides: trimming only the input made
+// a required name with a leading or trailing space (legal in a SQL Server name)
+// impossible to confirm. An exact match still counts, so a required text that is
+// all whitespace can be confirmed without an empty input matching it.
 func (d *TypedConfirmDialog) matched() bool {
-	return d.required != "" && strings.EqualFold(strings.TrimSpace(d.input.Value()), d.required)
+	if d.required == "" {
+		return false
+	}
+	v := d.input.Value()
+	if strings.EqualFold(v, d.required) {
+		return true
+	}
+	req := strings.TrimSpace(d.required)
+	return req != "" && strings.EqualFold(strings.TrimSpace(v), req)
 }
 
 // finish resolves the dialog: every answer proceeds, but a confirm whose typed
@@ -170,7 +241,10 @@ func (d *TypedConfirmDialog) Draw(s tcell.Screen) {
 		core.DrawTextClipped(s, x, inner.Y+1+i, w, msgStyle, line)
 	}
 	extra := len(d.msgLines) - 1
-	core.DrawTextClipped(s, lx, inner.Y+2+extra, w, msgStyle, fmt.Sprintf(Strings.TypeToConfirm, d.required))
+	for i, line := range d.promptLines {
+		core.DrawTextClipped(s, lx, inner.Y+2+extra+i, w, msgStyle, line)
+	}
+	extra += len(d.promptLines) - 1
 	d.input.SetBounds(lx, inner.Y+3+extra)
 	d.input.Draw(s)
 

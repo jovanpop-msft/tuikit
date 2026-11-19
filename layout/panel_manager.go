@@ -120,6 +120,11 @@ func (pm *PanelManager) RemovePanel(i int) {
 			}
 		}
 	}
+	// Removing the last panel while the drop-down is open (OnCloseTab, a host
+	// command) would leave it open over nothing; see setComboOpen.
+	if len(pm.panels) == 0 {
+		pm.setComboOpen(false)
+	}
 	pm.scrollComboToActive()
 	pm.relayout()
 }
@@ -231,8 +236,12 @@ func (pm *PanelManager) comboScrollMax(h int) int { return max(0, len(pm.panels)
 // press is deliberately not cleared: it belongs to the press that claimed
 // the gesture (tab row and combo arrow set it too), and clearing it on close
 // would release a held press to the panel underneath.
+//
+// It refuses to open with no panels: Draw skips the list then, so an open
+// combo would be invisible yet still swallow every key (HandleKey) and claim
+// every mouse event (OverlayActive), with nothing on screen to explain it.
 func (pm *PanelManager) setComboOpen(v bool) {
-	pm.comboOpen = v
+	pm.comboOpen = v && len(pm.panels) > 0
 	pm.comboSbDragging = false
 	if v {
 		pm.scrollComboToActive()
@@ -462,8 +471,9 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 		}
 	}
 
-	// Combo toggle arrow
-	if my == pm.rect.Y && mx >= pm.rect.X+pm.rect.W-4 {
+	// Combo toggle arrow. Draw shows it only when there are panels; with none,
+	// the click falls through as one elsewhere on the empty bar does.
+	if len(pm.panels) > 0 && my == pm.rect.Y && mx >= pm.rect.X+pm.rect.W-4 {
 		if ev.Buttons() == tcell.Button1 {
 			if !pm.press.Fresh(ev) {
 				// Same physical press; don't re-toggle on resent motion.
