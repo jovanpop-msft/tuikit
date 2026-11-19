@@ -50,8 +50,14 @@ type editorSearch struct {
 	// line's tail would wrongly satisfy at the tail's start (wholeWordLocs).
 	beginAnchored bool
 
-	matches    []searchMatch
-	cur        int // index into matches, or -1 when nothing is current
+	matches []searchMatch
+	// found is set when FindNext selected a match. The current match is then the
+	// match the selection covers exactly, resolved per call (currentIndex); an index
+	// into matches would go stale, because every edit re-splices the list under it
+	// (rescanSpan) and Alt+Up moves the selected match to a row where an index or a
+	// stored position names another match, so Replace skipped the match the user
+	// selected. The selection is what every edit already carries along.
+	found      bool
 	scanned    bool
 	scanVer    uint64
 	scanDocPtr *Document
@@ -89,7 +95,7 @@ func (e *Editor) SetSearch(opts SearchOptions) error {
 		e.ClearSearch()
 		return err
 	}
-	e.search = editorSearch{opts: opts, re: re, cur: -1, beginAnchored: hasBeginAnchor(pat)}
+	e.search = editorSearch{opts: opts, re: re, beginAnchored: hasBeginAnchor(pat)}
 	if opts.InSelection && e.HasSelection() && !e.selBlock {
 		sr, sc, er, ec := e.selectionBounds()
 		e.search.selValid = true
@@ -100,7 +106,7 @@ func (e *Editor) SetSearch(opts SearchOptions) error {
 }
 
 // ClearSearch drops the active search, its match list and its highlighting.
-func (e *Editor) ClearSearch() { e.search = editorSearch{cur: -1} }
+func (e *Editor) ClearSearch() { e.search = editorSearch{} }
 
 // HasSearch reports whether a search pattern is active.
 func (e *Editor) HasSearch() bool { return e.search.re != nil }
@@ -341,6 +347,27 @@ func hasMultiByte(s string) bool {
 	return false
 }
 
+// currentIndex returns the index in matches of the current match, or -1 when
+// none is: no Find has selected one since the search was set or the last
+// ReplaceAll, or the selection no longer covers exactly a match (typed over,
+// extended, collapsed by an edit or SetText).
+func (e *Editor) currentIndex(matches []searchMatch) int {
+	if !e.search.found || !e.HasSelection() || e.selBlock {
+		return -1
+	}
+	sr, sc, er, ec := e.selectionBounds()
+	if sr != er {
+		return -1
+	}
+	start, end := rowRange(matches, sr)
+	for i := start; i < end; i++ {
+		if matches[i].startCol == sc && matches[i].endCol == ec {
+			return i
+		}
+	}
+	return -1
+}
+
 // MatchCount returns the number of matches in the document for the active search.
 func (e *Editor) MatchCount() int { return len(e.scanMatches()) }
 
@@ -348,10 +375,7 @@ func (e *Editor) MatchCount() int { return len(e.scanMatches()) }
 // count, for a "Match 2 of 7" readout. i is 0 when no match is current.
 func (e *Editor) MatchPosition() (i, n int) {
 	matches := e.scanMatches()
-	if e.search.cur < 0 || e.search.cur >= len(matches) {
-		return 0, len(matches)
-	}
-	return e.search.cur + 1, len(matches)
+	return e.currentIndex(matches) + 1, len(matches)
 }
 
 // WordAtCursor returns the identifier the caret sits in or next to, or "" on
@@ -388,10 +412,11 @@ func (e *Editor) WordAtCursor() string {
 // starts at, for a status readout. ok is false when no match is current.
 func (e *Editor) CurrentMatchPos() (line, col int, ok bool) {
 	matches := e.scanMatches()
-	if e.search.cur < 0 || e.search.cur >= len(matches) {
+	cur := e.currentIndex(matches)
+	if cur < 0 {
 		return 0, 0, false
 	}
-	m := matches[e.search.cur]
+	m := matches[cur]
 	return m.row + 1, m.startCol + 1, true
 }
 
@@ -403,7 +428,7 @@ func (e *Editor) CurrentMatchPos() (line, col int, ok bool) {
 func (e *Editor) FindNext(dir int) bool {
 	matches := e.scanMatches()
 	if len(matches) == 0 {
-		e.search.cur = -1
+		e.search.found = false
 		return false
 	}
 	idx := -1
@@ -443,7 +468,7 @@ func (e *Editor) FindNext(dir int) bool {
 			idx = len(matches) - 1 // wrap to the bottom
 		}
 	}
-	e.search.cur = idx
+	e.search.found = true
 	e.selectMatch(matches[idx])
 	return true
 }
@@ -473,13 +498,11 @@ func (e *Editor) ReplaceCurrent() bool {
 		return false
 	}
 	matches := e.scanMatches()
-	if e.search.cur < 0 || e.search.cur >= len(matches) {
+	cur := e.currentIndex(matches)
+	if cur < 0 {
 		return false
 	}
-	m := matches[e.search.cur]
-	if !e.selectionIsMatch(m) {
-		return false
-	}
+	m := matches[cur]
 	repl, ok := e.search.replacementFor(m, e.search.submatchesOf(e.doc.Line(m.row)))
 	if !ok {
 		return false
@@ -488,18 +511,8 @@ func (e *Editor) ReplaceCurrent() bool {
 	// that one row: Replace/F3 down a large script is a held key.
 	e.pushUndoSpan(m.row, m.row+1)
 	e.replaceMatch(m, repl)
-	e.search.cur = -1
 	e.FindNext(1)
 	return true
-}
-
-// selectionIsMatch reports whether the current selection covers exactly m.
-func (e *Editor) selectionIsMatch(m searchMatch) bool {
-	if !e.HasSelection() || e.selBlock {
-		return false
-	}
-	sr, sc, er, ec := e.selectionBounds()
-	return sr == m.row && er == m.row && sc == m.startCol && ec == m.endCol
 }
 
 // lineSubmatches is one line's text with its regexp matches, submatches included,
@@ -600,7 +613,7 @@ func (e *Editor) ReplaceAll() int {
 	for i, target := range slices.Backward(targets) {
 		e.replaceMatch(target, repls[i])
 	}
-	e.search.cur = -1
+	e.search.found = false
 	e.selecting = false
 	e.clampCursor()
 	e.ensureCursorVisible()
