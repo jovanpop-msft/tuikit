@@ -116,6 +116,29 @@ func (d *PropertiesDialog) ShowPropertiesFitted(title string, rows []PropertyRow
 // never brings them into view.
 func propsDataH(inner core.Rect) int { return max(0, inner.H-5) }
 
+// scrollMax is the largest scroll that still fills the dataH-row viewport.
+func (d *PropertiesDialog) scrollMax(dataH int) int { return max(0, len(d.rows)-dataH) }
+
+// top is the first row drawn: scroll clamped at read time, because dataH follows
+// the dialog's height, which every terminal resize changes. Scrolled to the end
+// on a small terminal and then grown, a stored scroll drew only the tail rows
+// over a blank band, with the scrollbar thumb past its track and rows above it
+// unreachable by wheel-down. Relayout writes the clamp back too; reading through
+// top also covers a host that never calls Relayout.
+func (d *PropertiesDialog) top(dataH int) int { return min(d.scroll, d.scrollMax(dataH)) }
+
+// Relayout recentres the dialog for the new screen size, then re-clamps the
+// scroll to the new row capacity and keeps the cursor row on screen (a shrink
+// can leave it below the viewport).
+func (d *PropertiesDialog) Relayout() {
+	d.ModalDialog.Relayout()
+	dataH := propsDataH(d.InnerRect())
+	d.scroll = d.top(dataH)
+	if d.cursor >= 0 && dataH > 0 && d.cursor >= d.scroll+dataH {
+		d.scroll = min(d.scrollMax(dataH), d.cursor-dataH+1)
+	}
+}
+
 // Draw renders the properties dialog.
 func (d *PropertiesDialog) Draw(s tcell.Screen) {
 	if !d.visible {
@@ -126,6 +149,7 @@ func (d *PropertiesDialog) Draw(s tcell.Screen) {
 	inner := d.InnerRect()
 	keyW := d.keyW
 	dataH := propsDataH(inner)
+	top := d.top(dataH)
 
 	// Header
 	hdrStyle := theme.StyleGridHeader()
@@ -140,7 +164,7 @@ func (d *PropertiesDialog) Draw(s tcell.Screen) {
 	ruleStyle := theme.StyleDialogLine()
 
 	for row := range dataH {
-		idx := d.scroll + row
+		idx := top + row
 		if idx >= len(d.rows) {
 			break
 		}
@@ -166,7 +190,7 @@ func (d *PropertiesDialog) Draw(s tcell.Screen) {
 		core.DrawTextClipped(s, inner.X+keyW+4, y, inner.W-keyW-4, vs, pr.Value)
 	}
 	if len(d.rows) > dataH {
-		d.DrawContentScrollbar(s, inner.Y+2, dataH, len(d.rows), d.scroll)
+		d.DrawContentScrollbar(s, inner.Y+2, dataH, len(d.rows), top)
 	}
 
 	d.DrawSeparator(s)
@@ -188,6 +212,7 @@ func (d *PropertiesDialog) HandleKey(ev *tcell.EventKey) bool {
 	}
 	inner := d.InnerRect()
 	dataH := propsDataH(inner)
+	d.scroll = d.top(dataH)
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyEnter:
 		d.close()
@@ -218,7 +243,7 @@ func (d *PropertiesDialog) nextValueRow(i, dir int) int {
 // that way, so a section heading or trailing rows past the last value (above
 // the first) can be brought on screen.
 func (d *PropertiesDialog) moveCursor(to, dir, dataH int) {
-	maxScroll := max(0, len(d.rows)-dataH)
+	maxScroll := d.scrollMax(dataH)
 	if to < 0 {
 		d.scroll = min(maxScroll, max(0, d.scroll+dir))
 		return
@@ -245,7 +270,7 @@ func (d *PropertiesDialog) rowAt(x, y int) int {
 	if x < inner.X || x >= inner.X+inner.W || row < 0 || row >= propsDataH(inner) {
 		return -1
 	}
-	idx := d.scroll + row
+	idx := d.top(propsDataH(inner)) + row
 	if idx >= len(d.rows) || d.rows[idx].Section {
 		return -1
 	}
@@ -266,6 +291,7 @@ func (d *PropertiesDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	}
 	inner := d.InnerRect()
 	dataH := propsDataH(inner)
+	d.scroll = d.top(dataH)
 	if d.ScrollbarDrag(ev, d.Rect().Right()-1, inner.Y+2, dataH, len(d.rows), &d.scroll) {
 		return true
 	}
@@ -277,7 +303,7 @@ func (d *PropertiesDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	case tcell.WheelUp:
 		d.scroll = max(0, d.scroll-core.WheelRows)
 	case tcell.WheelDown:
-		d.scroll = max(d.scroll, min(len(d.rows)-dataH, d.scroll+core.WheelRows))
+		d.scroll = min(d.scrollMax(dataH), d.scroll+core.WheelRows)
 	}
 	return true
 }

@@ -207,3 +207,76 @@ func TestPropertiesDialogCopiesTheCursorRowsValue(t *testing.T) {
 		t.Error("a hidden dialog has nothing to copy")
 	}
 }
+
+// TestPropertiesDialogReclampsScrollOnResize pins the read-time scroll clamp:
+// scrolled to the end on a small terminal and then grown, the dialog used to
+// draw only the tail rows over a blank band (scroll stayed where the small
+// viewport left it), with the rows above unreachable by wheel-down. Checked
+// both with Relayout and with a host that only redraws.
+func TestPropertiesDialogReclampsScrollOnResize(t *testing.T) {
+	for _, relayout := range []bool{true, false} {
+		scr := tuikittest.NewScreen(80, 16)
+		d := withScreen(NewPropertiesDialog(), scr)
+		rows := make([]PropertyRow, 40)
+		for i := range rows {
+			rows[i] = PropertyRow{Key: "Key" + strconv.Itoa(i), Value: "Value" + strconv.Itoa(i)}
+		}
+		d.ShowPropertiesSized("Test", rows, 60, 40)
+		d.HandleKey(tcell.NewEventKey(tcell.KeyEnd, "", tcell.ModNone))
+		if d.scroll != 31 {
+			t.Fatalf("scroll = %d after End on 80x16, want 31", d.scroll)
+		}
+
+		scr.SetSize(80, 50)
+		if relayout {
+			d.Relayout()
+		} else {
+			d.recentre() // the size a host that never calls Relayout gets on the next Show
+		}
+		d.Draw(scr)
+
+		inner := d.InnerRect()
+		dataH := propsDataH(inner)
+		first := len(rows) - dataH
+		if got := scr.RowOf("Key" + strconv.Itoa(first) + " "); got != inner.Y+2 {
+			t.Errorf("relayout=%v: first data row Key%d at y=%d, want %d", relayout, first, got, inner.Y+2)
+		}
+		if got := scr.RowOf("Key39 "); got != inner.Y+2+dataH-1 {
+			t.Errorf("relayout=%v: last row Key39 at y=%d, want the viewport's last line %d", relayout, got, inner.Y+2+dataH-1)
+		}
+		if relayout && d.scroll != first {
+			t.Errorf("Relayout left scroll = %d, want %d written back", d.scroll, first)
+		}
+
+		// Wheel-up from the clamped position moves up from it, not from 31.
+		d.HandleMouse(tcell.NewEventMouse(inner.X+1, inner.Y+3, tcell.WheelUp, tcell.ModNone))
+		if want := max(0, first-core.WheelRows); d.scroll != want {
+			t.Errorf("relayout=%v: scroll = %d after WheelUp, want %d", relayout, d.scroll, want)
+		}
+	}
+}
+
+// TestPropertiesDialogRelayoutKeepsCursorOnScreenOnShrink: a shrink that would
+// leave the cursor row below the viewport scrolls it back into view.
+func TestPropertiesDialogRelayoutKeepsCursorOnScreenOnShrink(t *testing.T) {
+	scr := tuikittest.NewScreen(80, 50)
+	d := withScreen(NewPropertiesDialog(), scr)
+	rows := make([]PropertyRow, 40)
+	for i := range rows {
+		rows[i] = PropertyRow{Key: "Key" + strconv.Itoa(i), Value: "Value" + strconv.Itoa(i)}
+	}
+	d.ShowPropertiesSized("Test", rows, 60, 40)
+	for range 30 {
+		d.HandleKey(tcell.NewEventKey(tcell.KeyDown, "", tcell.ModNone))
+	}
+	if d.cursor != 30 || d.scroll != 0 {
+		t.Fatalf("cursor/scroll = %d/%d, want 30/0", d.cursor, d.scroll)
+	}
+
+	scr.SetSize(80, 16)
+	d.Relayout()
+	dataH := propsDataH(d.InnerRect())
+	if d.cursor < d.scroll || d.cursor >= d.scroll+dataH {
+		t.Errorf("cursor %d off screen after shrink: scroll %d, dataH %d", d.cursor, d.scroll, dataH)
+	}
+}

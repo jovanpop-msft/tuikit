@@ -198,6 +198,95 @@ func TestReplaceCurrentNeedsTheMatchSelected(t *testing.T) {
 	}
 }
 
+// The current match follows the text it is on. An index into the match list
+// went stale when PrependLines inserted a match above it: MatchPosition kept the
+// old ordinal, CurrentMatchPos named another line and ReplaceCurrent refused.
+func TestCurrentMatchSurvivesPrependLines(t *testing.T) {
+	e := newTestEditor("foo 1\nbar\nfoo 2\nfoo 3")
+	setSearch(t, e, SearchOptions{Query: "foo", Replace: "baz"})
+	e.FindNext(1)
+	e.FindNext(1) // foo 2, line 3
+
+	e.PrependLines("foo new", 0)
+	if i, n := e.MatchPosition(); i != 3 || n != 4 {
+		t.Fatalf("MatchPosition = %d of %d, want 3 of 4", i, n)
+	}
+	if line, col, ok := e.CurrentMatchPos(); !ok || line != 4 || col != 1 {
+		t.Fatalf("CurrentMatchPos = %d,%d,%v, want 4,1,true", line, col, ok)
+	}
+	if !e.ReplaceCurrent() {
+		t.Fatal("ReplaceCurrent refused the match the selection is on")
+	}
+	if got, want := e.Text(), "foo new\nfoo 1\nbar\nbaz 2\nfoo 3"; got != want {
+		t.Fatalf("text = %q, want %q", got, want)
+	}
+}
+
+// Alt+Up keeps the selection on the moved line. With the current match held as
+// an index (or as a row and columns), it named the other "foo" now on the old
+// row, ReplaceCurrent refused, and goSSMS's Replace fell back to Find Next and
+// jumped past the match the user had selected.
+func TestCurrentMatchSurvivesMoveLinesUp(t *testing.T) {
+	e := newTestEditor("foo a\nfoo b")
+	setSearch(t, e, SearchOptions{Query: "foo", Replace: "baz"})
+	e.FindNext(1)
+	e.FindNext(1) // foo b, line 2
+
+	e.MoveLinesUp()
+	if got, want := e.Text(), "foo b\nfoo a"; got != want {
+		t.Fatalf("MoveLinesUp left %q, want %q", got, want)
+	}
+	if i, n := e.MatchPosition(); i != 1 || n != 2 {
+		t.Fatalf("MatchPosition = %d of %d, want 1 of 2", i, n)
+	}
+	if line, col, ok := e.CurrentMatchPos(); !ok || line != 1 || col != 1 {
+		t.Fatalf("CurrentMatchPos = %d,%d,%v, want 1,1,true", line, col, ok)
+	}
+	if !e.ReplaceCurrent() {
+		t.Fatal("ReplaceCurrent refused the match the selection is on")
+	}
+	if got, want := e.Text(), "baz b\nfoo a"; got != want {
+		t.Fatalf("text = %q, want %q", got, want)
+	}
+}
+
+// An edit that drops the selection leaves no current match: MatchPosition reads
+// "0 of n" and Replace finds again instead of replacing.
+func TestNoCurrentMatchAfterSelectionDropped(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(e *Editor)
+		n    int
+	}{
+		{"DuplicateLines", func(e *Editor) { e.DuplicateLines() }, 3},
+		{"SetText", func(e *Editor) { e.SetText("foo x\nfoo y\nfoo z") }, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEditor("foo a\nfoo b")
+			setSearch(t, e, SearchOptions{Query: "foo", Replace: "baz"})
+			e.FindNext(1)
+			tc.edit(e)
+			before := e.Text()
+			if i, n := e.MatchPosition(); i != 0 || n != tc.n {
+				t.Fatalf("MatchPosition = %d of %d, want 0 of %d", i, n, tc.n)
+			}
+			if _, _, ok := e.CurrentMatchPos(); ok {
+				t.Fatal("CurrentMatchPos reports a current match")
+			}
+			if e.ReplaceCurrent() {
+				t.Fatal("ReplaceCurrent replaced with no match current")
+			}
+			if got := e.Text(); got != before {
+				t.Fatalf("text changed to %q", got)
+			}
+			e.FindNext(1)
+			if i, _ := e.MatchPosition(); i == 0 {
+				t.Fatal("FindNext did not make a match current")
+			}
+		})
+	}
+}
+
 func TestReplaceAllIsOneUndoStep(t *testing.T) {
 	original := "a a a\na a a\na a a"
 	e := newTestEditor(original)
@@ -461,7 +550,7 @@ func TestSearchIncrementalScanMatchesFullScan(t *testing.T) {
 		}},
 		{"replace the current match", func(e *Editor) {
 			e.cursorRow, e.cursorCol = 0, 0
-			e.search.cur = -1
+			e.search.found = false
 			e.FindNext(1)
 			e.ReplaceCurrent()
 		}},
