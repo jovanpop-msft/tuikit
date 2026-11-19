@@ -1,6 +1,8 @@
 package controls
 
 import (
+	"slices"
+
 	"github.com/radix29/tuikit/core"
 )
 
@@ -13,6 +15,7 @@ import (
 // reapplyColWidths instead, which keeps the measured widths.
 func (g *DataGrid) computeColWidths() {
 	g.widthsDirty = false
+	g.autoAligns = nil
 	if g.errorMode {
 		g.naturalWidths = nil
 		g.colWidths = []int{g.rect.W - 2}
@@ -26,6 +29,14 @@ func (g *DataGrid) computeColWidths() {
 		natural[i] = core.DisplayWidth(g.headerLabel(i)) + 2
 	}
 	cellLimit := max(g.maxCellWidthOrDefault(), 6) - 2
+	var classify func(string) CellClass
+	if g.autoAlign != nil {
+		classify = g.autoAlign(g.columns)
+	}
+	var seen []CellClass // per column: CellBlank, CellNumber, or CellText once any text was seen
+	if classify != nil {
+		seen = make([]CellClass, len(g.columns))
+	}
 	n := min(g.rows.Len(), colWidthSampleRows)
 	for r := range n {
 		// A group row's label (cell 0) spills across the row; its other
@@ -42,7 +53,20 @@ func (g *DataGrid) computeColWidths() {
 				if w := core.DisplayWidthAtMost(core.TruncateLine(cell, cellLimit), cellLimit) + 2; w > natural[i] {
 					natural[i] = w
 				}
+				if seen != nil && seen[i] != CellText {
+					if c := classify(cell); c != CellBlank {
+						seen[i] = max(seen[i], c)
+					}
+				}
 			}
+		}
+	}
+	for i, c := range seen {
+		if c == CellNumber {
+			if g.autoAligns == nil {
+				g.autoAligns = make([]ColumnAlign, len(seen))
+			}
+			g.autoAligns[i] = AlignRight
 		}
 	}
 	g.naturalWidths = natural
@@ -188,4 +212,71 @@ func (g *DataGrid) gutterWidth() int {
 		digits++
 	}
 	return digits + 2
+}
+
+// ColumnAlign is where a column's data cells sit within it.
+type ColumnAlign int
+
+const (
+	// AlignLeft is the default: text starts after the column's left padding.
+	AlignLeft ColumnAlign = iota
+	// AlignRight ends the text before the column's right padding — numbers,
+	// so their digits line up by place value.
+	AlignRight
+)
+
+// SetColumnAlignments sets each column's data-cell alignment by index; a column
+// past the slice's end is AlignLeft. Headers stay left-aligned, as SSMS draws
+// them, and so does a cell too wide for its column: it is cut at the right with
+// an ellipsis, since cutting its start would hide a number's leading digits.
+// SetData and SetSource clear the alignments, which name the old set's columns;
+// SetDataPreservingView keeps them. While set they override SetAutoAlign.
+func (g *DataGrid) SetColumnAlignments(aligns []ColumnAlign) {
+	g.aligns = slices.Clone(aligns)
+}
+
+// CellClass is what a SetAutoAlign classifier reads one cell as.
+type CellClass int
+
+// The order is load-bearing: computeColWidths keeps the highest class a
+// column's cells reached, so one text cell outranks any number of numbers.
+const (
+	// CellBlank holds no value (empty, a placeholder): it decides nothing.
+	CellBlank CellClass = iota
+	// CellNumber is a number, as the host renders them.
+	CellNumber
+	// CellText is anything else.
+	CellText
+)
+
+// SetAutoAlign right-aligns, by content, every column whose cells are numbers:
+// at least one CellNumber and no CellText among the cells the width measure
+// samples (the first colWidthSampleRows rows). What a number looks like is the
+// host's ("1,234", "12 MB"), so it supplies the test: classify is called with
+// the header row each time the widths are measured, and returns the cell
+// classifier for that column set, or nil to leave every column left-aligned
+// (a shape whose columns are not lists, such as a Property/Value record).
+//
+// The derivation reruns wherever the widths are measured (SetSource,
+// SetBounds, RefreshColumnWidths), so cells written in place follow it. The
+// classifier is kept across row sets; SetColumnAlignments, while set,
+// overrides it. Nil turns it off.
+func (g *DataGrid) SetAutoAlign(classify func(columns []string) func(cell string) CellClass) {
+	g.autoAlign = classify
+	g.widthsDirty = true
+}
+
+// columnAlign is column i's alignment: SetColumnAlignments' while it is set,
+// else SetAutoAlign's.
+func (g *DataGrid) columnAlign(i int) ColumnAlign {
+	if g.aligns != nil {
+		if i < len(g.aligns) {
+			return g.aligns[i]
+		}
+		return AlignLeft
+	}
+	if i < len(g.autoAligns) {
+		return g.autoAligns[i]
+	}
+	return AlignLeft
 }

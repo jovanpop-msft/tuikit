@@ -2,6 +2,7 @@ package controls
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
@@ -195,7 +196,15 @@ func (g *DataGrid) drawRow(s tcell.Screen, y, row int, cells []string, nulls Nul
 		}
 		avail := min(cw, g.rect.Right()-col)
 		core.FillRect(s, core.Rect{X: col, Y: y, W: avail, H: 1}, ' ', cellStyle)
-		core.DrawTextLine(s, col+1, y, avail-2, cellStyle, cell)
+		// A right-aligned cell is padded against the column's own width, not
+		// avail, so a column the grid's edge cuts keeps its digits where they
+		// were and clips them, rather than jumping as the view scrolls. Row -1
+		// is the header, which stays left-aligned.
+		pad := 0
+		if row >= 0 && g.columnAlign(i) == AlignRight && !strings.ContainsAny(cell, "\t\r\n") {
+			pad = max(0, cw-2-core.DisplayWidthAtMost(cell, cw-1))
+		}
+		core.DrawTextLine(s, col+1+pad, y, avail-2-pad, cellStyle, cell)
 		if col+cw-1 < g.rect.Right() {
 			core.PutRune(s, col+cw-1, y, '|', sepStyle.Foreground(p.GridBorder))
 		}

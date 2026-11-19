@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v3"
+	"github.com/radix29/tuikit/tuikittest"
 )
 
 // newTestToggleGrid mirrors pageServerProcessors' shape: a label column
@@ -252,5 +253,18 @@ func TestToggleGridPageReadOnly(t *testing.T) {
 	g.Toggle(0, 0)
 	if !g.Values()[0][0] {
 		t.Error("lifting the gate left the grid inert")
+	}
+}
+
+// TestToggleGridShowsHeadersBeforeSetRows: a toggle grid that starts empty
+// (New Database's Filegroups, filled on Add) draws its header row from the
+// start; it drew none until the first SetRows.
+func TestToggleGridShowsHeadersBeforeSetRows(t *testing.T) {
+	g := NewToggleGrid([]string{"Name", "Files", "Read-only", "Default"}, []int{2, 3}, 8)
+	g.Layout(0, 0, 60)
+	s := tuikittest.NewScreen(60, 8)
+	g.Draw(s, false)
+	if _, _, ok := s.Find("Read-only"); !ok {
+		t.Fatalf("an empty toggle grid should draw its headers:\n%s", s.Snapshot())
 	}
 }

@@ -627,6 +627,50 @@ func TestTreeViewDoubleClickNeedsTheSameRowAndAFreshInterval(t *testing.T) {
 	})
 }
 
+// A refresh between two presses that puts a different node in the clicked row
+// does not pair them: "click A, then click B where A was" is two clicks.
+func TestTreeViewRefreshBetweenClicksDoesNotPairDifferentNodes(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetBounds(0, 0, 40, 10)
+	tv.SetNodes([]TreeNode{{ID: 1, Label: "one"}, {ID: 2, Label: "two"}})
+	var fired []TreeNodeID
+	tv.OnActivate = func(id TreeNodeID) bool { fired = append(fired, id); return true }
+
+	clickRow(tv, 6, 1)                                                      // node 1, row 1
+	tv.SetNodes([]TreeNode{{ID: 2, Label: "two"}, {ID: 3, Label: "three"}}) // node 2 now in row 1
+	clickRow(tv, 6, 1)
+
+	if len(fired) != 0 {
+		t.Errorf("a click on node 1 and one on node 2 in its old row activated %v", fired)
+	}
+}
+
+// A host that rebuilds the nodes from the first press (a reload hung off
+// OnSelect, an expand) still gets the double-click when the same node is
+// pressed again; resetting the tracker in SetNodes, as ListBox.SetItems does,
+// would lose it. SetNodes keeps the selected node on its screen line, so the
+// second press lands on the same row.
+func TestTreeViewDoubleClickSurvivesRefreshFromFirstPress(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetBounds(0, 0, 40, 10)
+	tv.SetNodes([]TreeNode{{ID: 1, Label: "one"}, {ID: 2, Label: "two"}})
+	var fired []TreeNodeID
+	tv.OnActivate = func(id TreeNodeID) bool { fired = append(fired, id); return true }
+	tv.OnSelect = func(TreeNodeID) {
+		tv.SetNodes([]TreeNode{{ID: 0, Label: "new"}, {ID: 1, Label: "one"}, {ID: 2, Label: "two"}})
+	}
+
+	clickRow(tv, 6, 2) // node 2; the rebuild scrolls by one to keep it on row 2
+	if got, ok := tv.NodeIDAt(6, 2); !ok || got != 2 {
+		t.Fatalf("after the rebuild row 2 holds node %d, want 2", got)
+	}
+	clickRow(tv, 6, 2)
+
+	if len(fired) != 1 || fired[0] != 2 {
+		t.Errorf("activations = %v, want [2]", fired)
+	}
+}
+
 // A double-click on the expander glyph is two expands, not an activation: that
 // region already means "toggle", and firing the default action from it too
 // would open a log file every time a folder was opened and closed.

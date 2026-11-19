@@ -140,6 +140,38 @@ func TestBufferBlitReplacesStraddlingWideGlyphWithSpace(t *testing.T) {
 	}
 }
 
+// A src window starting on a wide grapheme's trailing half blanks the first
+// destination cell rather than leaving the previous frame's content there.
+func TestBlitBlanksLeadingHalfGlyph(t *testing.T) {
+	b := NewBuffer(3, 1)
+	b.PutStr(0, 0, "中a")
+
+	s := NewBuffer(3, 1)
+	s.PutStr(0, 0, "XYZ")
+	b.Blit(s, Rect{X: 1, Y: 0, W: 2, H: 1}, Rect{X: 0, Y: 0, W: 2, H: 1})
+
+	if got := s.Row(0); got != " aZ" {
+		t.Errorf("blitted row = %q, want %q", got, " aZ")
+	}
+}
+
+// A src window reaching past the buffer edge blanks the destination cells it
+// covers, so a canvas that shrank under an older scroll offset shows no stale
+// cells. Cells outside dst stay untouched.
+func TestBlitPastBufferEdgeBlanksDestination(t *testing.T) {
+	b := NewBuffer(2, 1)
+	b.PutStr(0, 0, "ab")
+
+	s := dotted(6, 2)
+	b.Blit(s, Rect{X: 1, Y: 0, W: 4, H: 2}, Rect{X: 1, Y: 0, W: 4, H: 2})
+
+	for y, want := range []string{".b   .", ".    ."} {
+		if got := s.Row(y); got != want {
+			t.Errorf("row %d = %q, want %q", y, got, want)
+		}
+	}
+}
+
 func TestNewBufferClampsNegativeDimensions(t *testing.T) {
 	c := NewBuffer(-3, -1)
 	if w, h := c.Size(); w != 0 || h != 0 {

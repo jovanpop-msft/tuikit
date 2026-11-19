@@ -250,3 +250,73 @@ func TestStackGivesItsScreenToEveryRegisteredDialog(t *testing.T) {
 		}
 	}
 }
+
+// Re-showing an open dialog refreshes it in place: its ShowOrder is kept, so
+// it stays under a dialog opened after it, even across a Sync between the two.
+func TestStackReshowOfOpenDialogKeepsPlace(t *testing.T) {
+	scr := tuikittest.NewScreen(80, 24)
+	a, b := newStackDialog(scr, 20, 6), newStackDialog(scr, 20, 6)
+	var st Stack
+	st.Register(a)
+	st.Register(b)
+
+	a.Show()
+	st.Sync()
+	b.Show()
+	st.Sync()
+	order := a.ShowOrder()
+	a.Show() // refresh while open, no Sync in between
+	if a.ShowOrder() != order {
+		t.Errorf("ShowOrder after re-showing an open dialog = %d, want %d unchanged", a.ShowOrder(), order)
+	}
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{a, b}) {
+		t.Errorf("Open = %v, want [a b]: a re-show must not lift a", got)
+	}
+}
+
+// A dialog hidden and shown again between two Syncs was visible at both, so it
+// kept its old slot under a dialog opened in the meantime, which then took the
+// keys: a message box whose OK handler hides it, opens a confirmation and
+// reshows the message box with new text left the confirmation on top.
+func TestStackHideShowBetweenSyncsGoesOnTop(t *testing.T) {
+	scr := tuikittest.NewScreen(80, 24)
+	a, b, c := newStackDialog(scr, 20, 6), newStackDialog(scr, 20, 6), newStackDialog(scr, 20, 6)
+	var st Stack
+	for _, d := range []*stackDialog{a, b, c} {
+		st.Register(d)
+	}
+	a.Show()
+	st.Sync()
+	b.Show()
+	st.Sync()
+
+	b.Hide() // one handler: hide b, open c, reshow b
+	c.Show()
+	b.Show()
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{a, c, b}) {
+		t.Fatalf("Open = %v, want [a c b]: b was shown last", got)
+	}
+	st.HandleKey(tuikittest.Rune('x'))
+	if b.keys != 1 || c.keys != 0 {
+		t.Errorf("keys: b %d, c %d; want the reshown b to take them", b.keys, c.keys)
+	}
+
+	// The same with no dialog opened in between: b goes back on top of a.
+	b.Hide()
+	b.Show()
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{a, c, b}) {
+		t.Errorf("Open after hide/show alone = %v, want [a c b]", got)
+	}
+
+	// A dialog lower in the stack reopened between Syncs is raised over those
+	// that stayed open.
+	a.Hide()
+	a.Show()
+	st.Sync()
+	if got := st.Open(); !slices.Equal(got, []Dialog{c, b, a}) {
+		t.Errorf("Open after reopening a = %v, want [c b a]", got)
+	}
+}

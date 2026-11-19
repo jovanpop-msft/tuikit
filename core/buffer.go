@@ -253,9 +253,11 @@ func (c *Buffer) inBounds(x, y int) bool {
 	return x >= 0 && y >= 0 && x < c.w && y < c.h
 }
 
-// Blit copies the src region onto s at dst, clipping a src past the buffer edge
-// and a dst smaller than src. A wide grapheme whose second half falls outside
-// dst becomes a space, so no stray half-glyph bleeds beside the viewport.
+// Blit copies the src region onto s at dst, clipping a dst smaller than src.
+// Every dst cell inside the copied area is written: a wide grapheme whose second
+// half falls outside dst becomes a space, so does a src column landing on a wide
+// grapheme's trailing half, and so does a src cell past the buffer edge, so no
+// stray half-glyph or stale screen content shows beside or inside the viewport.
 func (c *Buffer) Blit(s tcell.Screen, src Rect, dst Rect) {
 	rows := min(src.H, dst.H)
 	cols := min(src.W, dst.W)
@@ -264,7 +266,13 @@ func (c *Buffer) Blit(s tcell.Screen, src Rect, dst Rect) {
 			// Read the cell rather than Get it: Get composes a string per cell.
 			cell := c.cellAt(src.X+dx, src.Y+dy)
 			if cell.width == 0 {
-				// Trailing half of a wide grapheme, or off-buffer: nothing of its own to draw.
+				// Trailing half of a wide grapheme whose lead lies left of src (a
+				// horizontal scroll by an odd amount), or off-buffer (a canvas that
+				// shrank under an older scroll offset). Stepping over it without a
+				// write left the previous frame's cell showing. A lead read inside
+				// the window advances past its own trailing cells, so only these
+				// two reach here. The zero cell's style is tcell.StyleDefault.
+				PutRune(s, dst.X+dx, dst.Y+dy, ' ', cell.style)
 				dx++
 				continue
 			}
