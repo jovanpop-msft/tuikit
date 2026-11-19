@@ -404,7 +404,8 @@ func (e *Editor) SetLineBuffer(b *LineBuffer) {
 // Copy after the prepend copies what it would have before. The scroll position
 // moves down too, unless it was at the top: a viewer who never scrolled keeps
 // seeing the newest line. Anything the trim cut off is clamped to the new last
-// line (a selection wholly inside the cut becomes empty).
+// line (a selection wholly inside the cut becomes empty), and a search scope
+// the cut reaches into is emptied.
 //
 // Programmatic, so it works on a read-only editor. It records no undo step and
 // clears the undo/redo history, whose row numbers it would invalidate; read-only
@@ -437,10 +438,9 @@ func (e *Editor) PrependLines(text string, keepMax int) {
 
 		e.cursorRow += k
 		e.selAnchorRow += k
-		if e.search.selValid {
-			e.search.selStartRow += k
-			e.search.selEndRow += k
-		}
+		// Synced per splice: left to the next Draw, changedSince would merge this
+		// with the trim below into one span covering the whole scope.
+		e.syncScope()
 		switch {
 		case topRow >= 0:
 			e.scrollRow = visualIndexForCursor(e.buildVisualLines(e.wrapWidth()), topRow+k, topCol)
@@ -458,13 +458,7 @@ func (e *Editor) PrependLines(text string, keepMax int) {
 		if e.cursorRow > last {
 			e.cursorRow, e.cursorCol = last, len(e.doc.Line(last))
 		}
-		if e.search.selValid {
-			if e.search.selStartRow > last {
-				e.search.selValid = false
-			} else if e.search.selEndRow > last {
-				e.search.selEndRow, e.search.selEndCol = last, len(e.doc.Line(last))
-			}
-		}
+		e.syncScope()
 	}
 
 	e.undoStack, e.redoStack, e.undoBytes, e.stepOpen = nil, nil, 0, false

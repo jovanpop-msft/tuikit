@@ -36,6 +36,7 @@ type Dialog interface {
 type Stack struct {
 	all    []Dialog     // every registered dialog, in registration order
 	open   []Dialog     // the open ones, bottom to top
+	orders []uint64     // open[i]'s showOrder when Sync pushed it
 	screen tcell.Screen // given to every registered dialog (SetScreen)
 }
 
@@ -86,9 +87,25 @@ func (st *Stack) Registered() []Dialog { return st.all }
 // order they nest; a host that builds dialogs lazily registers them in
 // first-use order. A Dialog without ShowOrder (one not embedding ModalDialog)
 // counts as shown before every one that has it.
+//
+// A dialog hidden and shown again between two Syncs is visible at both, so
+// Visible alone cannot tell it from one left open; it once kept its old slot,
+// under a dialog opened in the meantime (a message box whose OK handler hides
+// it, opens a confirmation, then reshows it with new text), and that dialog
+// took the keys. Sync compares each entry's ShowOrder with the one it had when
+// pushed: a changed number means it was closed and reopened, so it is taken
+// out and pushed again with the other newcomers. A Dialog without ShowOrder
+// cannot be told apart and keeps its slot.
 func (st *Stack) Sync() {
-	st.open = slices.DeleteFunc(st.open, func(d Dialog) bool { return !d.Visible() })
-	n := len(st.open)
+	n := 0
+	for i, d := range st.open {
+		if d.Visible() && showOrder(d) == st.orders[i] {
+			st.open[n], st.orders[n] = d, st.orders[i]
+			n++
+		}
+	}
+	clear(st.open[n:])
+	st.open, st.orders = st.open[:n], st.orders[:n]
 	for _, d := range st.all {
 		if d.Visible() && !slices.Contains(st.open, d) {
 			st.open = append(st.open, d)
@@ -97,6 +114,9 @@ func (st *Stack) Sync() {
 	slices.SortStableFunc(st.open[n:], func(x, y Dialog) int {
 		return cmp.Compare(showOrder(x), showOrder(y))
 	})
+	for _, d := range st.open[n:] {
+		st.orders = append(st.orders, showOrder(d))
+	}
 }
 
 // showOrder is d's ModalDialog.ShowOrder, or 0 for a Dialog without one.

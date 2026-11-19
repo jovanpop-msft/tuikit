@@ -24,9 +24,14 @@ type SearchOptions struct {
 	WholeWord bool
 	Regexp    bool
 
-	// InSelection restricts ReplaceAll to the selection active when SetSearch ran.
-	// No effect on FindNext, which searches the whole document: a find stopping at a
-	// selection boundary would look like "no more matches".
+	// InSelection restricts FindNext, ReplaceCurrent and ReplaceAll to the
+	// selection active when SetSearch ran (SSMS's "Look in: Selection"): FindNext
+	// wraps within it, so the first Replace press finds a match Replace will
+	// replace rather than the next one after the selection. The scope follows
+	// edits that leave its first and last rows alone; one it cannot follow (an
+	// edit on either row, SetText) empties it, so nothing is found or replaced
+	// rather than text the user did not select. A plain Find that should cover
+	// the whole document leaves this unset.
 	InSelection bool
 }
 
@@ -62,12 +67,17 @@ type editorSearch struct {
 	scanVer    uint64
 	scanDocPtr *Document
 
-	// selStart/selEnd bound an InSelection ReplaceAll, captured at SetSearch time
+	// selStart/selEnd bound an InSelection search, captured at SetSearch time
 	// because replacing text moves the selection (from the second replacement on,
-	// the first invalidated the range).
+	// the first invalidated the range). They describe the document at scopeVer and
+	// are brought forward by syncScope before anything reads them: captured once
+	// and left alone, a Replace on the end row or a line typed above made Replace
+	// All filter against positions naming other text, replacing outside the
+	// selection or skipping matches inside it.
 	selValid                 bool
 	selStartRow, selStartCol int
 	selEndRow, selEndCol     int
+	scopeVer                 uint64
 }
 
 // SetSearch compiles opts into the active search and drops any previous match
@@ -101,8 +111,69 @@ func (e *Editor) SetSearch(opts SearchOptions) error {
 		e.search.selValid = true
 		e.search.selStartRow, e.search.selStartCol = sr, sc
 		e.search.selEndRow, e.search.selEndCol = er, ec
+		e.search.scopeVer = e.doc.Version()
 	}
 	return nil
+}
+
+// syncScope brings an InSelection scope forward to the current document. An edit
+// wholly above the scope moves it by the change in line count, one wholly below
+// it or strictly between its first and last rows changes nothing but the last
+// row's number, and anything else (an edit on the first or last row, which may
+// have moved the columns, or one changedSince can't describe) empties it. The
+// columns are never guessed: an uncertain scope replaces nothing. replaceMatch,
+// the one edit whose column effect is known, adjusts the scope itself.
+//
+// Called from scanMatches, so every Draw keeps the scope current and
+// changedSince's union rarely widens across far-apart edits.
+func (e *Editor) syncScope() {
+	s := &e.search
+	if !s.selValid || s.scopeVer == e.doc.Version() {
+		return
+	}
+	row, oldN, newN, ok := e.doc.changedSince(s.scopeVer)
+	s.scopeVer = e.doc.Version()
+	d := newN - oldN
+	switch {
+	case !ok:
+		s.selValid = false
+	case row+oldN <= s.selStartRow:
+		// Above (an insertion at the first row, oldN == 0, puts lines before it).
+		s.selStartRow += d
+		s.selEndRow += d
+	case row > s.selEndRow:
+		// Below.
+	case row > s.selStartRow && row+oldN <= s.selEndRow:
+		// Between the first and last rows: their text is untouched.
+		s.selEndRow += d
+	default:
+		s.selValid = false
+	}
+}
+
+// scopeAfterReplace moves an InSelection scope's columns for replaceMatch's
+// rewrite of m to replLen runes, which syncScope can't do: it sees only that the
+// row changed. A column at or past the match's end moves with the text after it.
+// The caller has synced the scope to the version before the rewrite.
+func (s *editorSearch) scopeAfterReplace(m searchMatch, replLen int, ver uint64) {
+	if !s.selValid {
+		return
+	}
+	d := replLen - (m.endCol - m.startCol)
+	for _, p := range []struct{ row, col *int }{{&s.selStartRow, &s.selStartCol}, {&s.selEndRow, &s.selEndCol}} {
+		if *p.row != m.row {
+			continue
+		}
+		switch {
+		case *p.col >= m.endCol:
+			*p.col += d
+		case *p.col > m.startCol:
+			// Inside the replaced text: no position in the new text corresponds.
+			s.selValid = false
+			return
+		}
+	}
+	s.scopeVer = ver
 }
 
 // ClearSearch drops the active search, its match list and its highlighting.
@@ -131,6 +202,7 @@ func (e *Editor) scanMatches() []searchMatch {
 	if s.re == nil {
 		return nil
 	}
+	e.syncScope()
 	doc := e.doc
 	switch {
 	case !s.scanned || s.scanDocPtr != doc:
@@ -422,11 +494,16 @@ func (e *Editor) CurrentMatchPos() (line, col int, ok bool) {
 
 // FindNext moves to the next match after the cursor (dir >= 0) or the last one
 // before it (dir < 0), selects it, and scrolls it into view, wrapping around the
-// document; it reports whether any match was found. The search starts from the
+// document (around the scope, under InSelection); it reports whether any match
+// was found. The search starts from the
 // cursor, not the previous match's index, so Find Next after clicking elsewhere
 // continues from where the user is looking.
 func (e *Editor) FindNext(dir int) bool {
 	matches := e.scanMatches()
+	if e.search.opts.InSelection {
+		// Only the scope's matches, so the search wraps within it.
+		matches = slices.DeleteFunc(slices.Clone(matches), func(m searchMatch) bool { return !e.matchInScope(m) })
+	}
 	if len(matches) == 0 {
 		e.search.found = false
 		return false
@@ -499,7 +576,7 @@ func (e *Editor) ReplaceCurrent() bool {
 	}
 	matches := e.scanMatches()
 	cur := e.currentIndex(matches)
-	if cur < 0 {
+	if cur < 0 || !e.matchInScope(matches[cur]) {
 		return false
 	}
 	m := matches[cur]
@@ -568,7 +645,9 @@ func (e *Editor) replaceMatch(m searchMatch, repl string) {
 	updated = append(updated, line[:m.startCol]...)
 	updated = append(updated, replRunes...)
 	updated = append(updated, line[m.endCol:]...)
+	e.syncScope()
 	e.doc.setLine(m.row, updated)
+	e.search.scopeAfterReplace(m, len(replRunes), e.doc.Version())
 
 	e.selecting = false
 	e.cursorRow, e.cursorCol = m.row, m.startCol+len(replRunes)
@@ -621,7 +700,8 @@ func (e *Editor) ReplaceAll() int {
 }
 
 // matchInScope reports whether m falls within an InSelection run's captured
-// range; always true when the search isn't scoped to a selection.
+// range; always true when the search isn't scoped to a selection. m must come
+// from scanMatches, which has synced the scope to the same version.
 func (e *Editor) matchInScope(m searchMatch) bool {
 	s := &e.search
 	if !s.opts.InSelection {

@@ -86,7 +86,9 @@ func (d *ModalDialog) recentre() {
 	d.rect.Y = max(0, (sh-d.rect.H)/2)
 }
 
-// Show makes the dialog visible, recentred.
+// Show makes the dialog visible, recentred. Showing a dialog that is not
+// visible numbers it anew (see ShowOrder); re-showing an open one, to refresh
+// its contents, keeps its number, so it keeps its place in a Stack.
 //
 // The drag latches start clear on every showing because their clearing release
 // never arrives: a button click closes the dialog on the press, and by the
@@ -100,8 +102,10 @@ func (d *ModalDialog) Show() {
 	d.press.Clear()
 	d.fresh, d.tracked = false, nil
 	d.sbDragging = false
+	if !d.visible {
+		d.shownAt = showSeq.Add(1)
+	}
 	d.visible = true
-	d.shownAt = showSeq.Add(1)
 }
 
 // showSeq numbers every Show across all dialogs, for ShowOrder. Atomic only so
@@ -109,10 +113,12 @@ func (d *ModalDialog) Show() {
 // it; within one host every Show is on its UI goroutine.
 var showSeq atomic.Uint64
 
-// ShowOrder is when the dialog was last shown, as a number that increases with
-// every Show of any dialog (0: never shown). Stack.Sync stacks dialogs that
-// opened since its previous call in this order, so the one shown last is on
-// top whatever order they were registered in.
+// ShowOrder is when the dialog was last opened, as a number that increases
+// with every Show of any hidden dialog (0: never shown). A Show of a dialog
+// already visible leaves it unchanged. Stack.Sync stacks dialogs that opened
+// since its previous call in this order, so the one shown last is on top
+// whatever order they were registered in, and it reads a changed ShowOrder on
+// a dialog it holds as that dialog having been closed and reopened.
 func (d *ModalDialog) ShowOrder() uint64 { return d.shownAt }
 
 // Relayout re-fits the dialog to the current screen size. The host calls it on

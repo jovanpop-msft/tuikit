@@ -74,9 +74,14 @@ type TreeView struct {
 	// SetTitleButton); an empty label draws none.
 	titleButton titleButton
 
-	// clicks pairs presses on one row into a double-click (the mouse spelling of
-	// Enter's default action).
-	clicks core.ClickTracker[int]
+	// clicks pairs presses on one node into a double-click (the mouse spelling of
+	// Enter's default action). Keyed by node ID, not index into nodes: a SetNodes
+	// between the presses shifts the indexes, so "click A, then click B where A
+	// was" activated B, and an async expand landing above the node lost a real
+	// double-click (SetNodes scrolls to keep the selection on its line, so the
+	// same node came back at another index). Not reset in SetNodes, unlike
+	// ListBox's: that would lose the double-click the same way.
+	clicks core.ClickTracker[TreeNodeID]
 
 	// gesture is the zone the held Button1 press began in (see treeZone). Every
 	// event until the release goes to it: tcell's all-motion tracking resends
@@ -553,11 +558,11 @@ func (tv *TreeView) HandleMouse(ev *tcell.EventMouse) bool {
 		// query editor), are the gesture's: they never re-select or re-toggle.
 		tv.gesture.Arm(ev, treeActed)
 		node := &tv.nodes[idx]
-		// A second press on the same row inside the interval is a double-click:
+		// A second press on the same node inside the interval is a double-click:
 		// activate rather than re-select. Recorded before the expander test so a
 		// double-click on the glyph only toggles (activating from it too would fire on
 		// the second half of an ordinary expand).
-		doubleClick := tv.clicks.Press(idx, ev.When())
+		doubleClick := tv.clicks.Press(node.ID, ev.When())
 		// Only the "[+]"/"[-]" expander glyph toggles expand/collapse; a click
 		// elsewhere on the row reselects it, which lets a node be click-dragged into
 		// the query editor without flipping its expand state (a drag starts on the

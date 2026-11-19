@@ -173,6 +173,16 @@ type DataGrid struct {
 	// clamp; 0 means "use the default".
 	maxCellWidth int
 
+	// aligns is each column's SetColumnAlignments alignment; a column past its
+	// end is AlignLeft. Cleared with the columns it describes (resetView).
+	aligns []ColumnAlign
+
+	// autoAlign is SetAutoAlign's classifier, kept across row sets like
+	// maxCellWidth; autoAligns is what computeColWidths last derived with it,
+	// used for every column while aligns is nil.
+	autoAlign  func(columns []string) func(cell string) CellClass
+	autoAligns []ColumnAlign
+
 	// colWidthOverride holds each column's dragged width, or 0 for the computed
 	// default. It survives computeColWidths, so a resized column keeps its
 	// width across a bounds change or a backfill's RefreshColumnWidths, and
@@ -349,6 +359,8 @@ func (g *DataGrid) resetView(columns []string, rows RowSource, errorMode bool) {
 	g.rowClicks.Reset()
 	// The indicator names a column of the old set; a host that sorted re-sets it.
 	g.sortCol, g.sortDesc = -1, false
+	// Alignments, like the indicator, describe the old set's columns.
+	g.aligns = nil
 	// Row indices from the old set name different objects in this one.
 	g.ClearMarkedRows()
 	// The dragged widths belong to the old columns; this result set's column 2
@@ -409,8 +421,10 @@ func (g *DataGrid) setSourcePreserving(columns []string, rows RowSource, keepSel
 	scrollRow, scrollCol := g.scrollRow, g.scrollCol
 	widths := g.ColumnWidthOverrides()
 	sortCol, sortDesc := g.sortCol, g.sortDesc
+	aligns := g.aligns
 	g.SetSource(columns, rows)
 	g.sortCol, g.sortDesc = sortCol, sortDesc
+	g.aligns = aligns
 	g.restoreOverrideWidths(widths)
 	g.SetScroll(scrollRow, scrollCol)
 	g.SetSelectedCell(selRow, selCol)

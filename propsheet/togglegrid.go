@@ -83,6 +83,10 @@ func NewToggleGrid(columns []string, toggleCols []int, height int) *ToggleGridRo
 		toggleCols: toggleCols,
 	}
 	grid.OnActivateCell = t.activateCell
+	// The headers from the start, not from the first SetRows: a page that
+	// starts empty and fills on Add (New Database's Filegroups) drew no
+	// header row until then. render, which needs no rect (see SetDrawReadOnly).
+	t.render()
 	return t
 }
 

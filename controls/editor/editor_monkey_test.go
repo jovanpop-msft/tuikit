@@ -65,6 +65,7 @@ var monkeySearches = []SearchOptions{
 	{Query: `\s+`, Replace: " ", Regexp: true},
 	{Query: "注", Replace: "👍"},
 	{Query: "x", Replace: "yy", InSelection: true},
+	{Query: "a", Replace: "", InSelection: true},
 }
 
 func randomMonkeyText(r *rand.Rand) string {
@@ -84,6 +85,48 @@ type editorMonkey struct {
 	e   *Editor
 	s   *tuikittest.Screen
 	ops []string
+	// scope is the InSelection scope's text as of the last check, nil when none
+	// is active.
+	scope *scopeText
+}
+
+// scopeText splits the document at an InSelection scope's bounds.
+type scopeText struct{ before, inside, after string }
+
+// scopeSplit returns the document split at the editor's (synced) InSelection
+// scope, nil when none is active, or an error when the bounds lie outside the
+// document.
+func scopeSplit(e *Editor) (*scopeText, error) {
+	e.scanMatches() // syncs the scope; Draw doesn't reach it at a zero size
+	s := &e.search
+	if !s.opts.InSelection || !s.selValid {
+		return nil, nil
+	}
+	n := e.doc.Len()
+	if s.selStartRow < 0 || s.selEndRow >= n || s.selStartRow > s.selEndRow ||
+		s.selStartCol < 0 || s.selStartCol > len(e.doc.Line(s.selStartRow)) ||
+		s.selEndCol < 0 || s.selEndCol > len(e.doc.Line(s.selEndRow)) ||
+		(s.selStartRow == s.selEndRow && s.selStartCol > s.selEndCol) {
+		return nil, fmt.Errorf("search scope (%d,%d)-(%d,%d) outside the document (%d lines)",
+			s.selStartRow, s.selStartCol, s.selEndRow, s.selEndCol, n)
+	}
+	var b strings.Builder
+	off := func(row, col int) int {
+		o := 0
+		for r := range row {
+			o += len(e.doc.Line(r)) + 1
+		}
+		return o + col
+	}
+	for i, line := range e.doc.Lines() {
+		if i > 0 {
+			b.WriteRune('\n')
+		}
+		b.WriteString(string(line))
+	}
+	text := []rune(b.String())
+	lo, hi := off(s.selStartRow, s.selStartCol), off(s.selEndRow, s.selEndCol)
+	return &scopeText{string(text[:lo]), string(text[lo:hi]), string(text[hi:])}, nil
 }
 
 // step performs one random operation and returns its description.
@@ -138,6 +181,8 @@ func (m *editorMonkey) step() string {
 		if err := e.SetSearch(opts); err != nil {
 			return fmt.Sprintf("SetSearch(%+v) err %v", opts, err)
 		}
+		// A fresh scope: the operation below is checked against it, not the old one.
+		m.scope, _ = scopeSplit(e)
 		switch r.IntN(4) {
 		case 0:
 			e.FindNext(1)
@@ -226,10 +271,24 @@ func (m *editorMonkey) action() string {
 }
 
 // check is the per-step invariant: everything that reads the cursor or the
-// selection survives, and both lie inside the document.
+// selection survives, and both lie inside the document. An InSelection scope
+// lies inside it too and still covers the text it covered: a step changed the
+// text inside the scope or the text around it, never both, so a scope left
+// behind by an edit around it (which then names other text, and Replace All
+// rewrites what the user did not select) fails.
 func (m *editorMonkey) check() error {
 	e := m.e
 	e.Draw(m.s)
+	scope, err := scopeSplit(e)
+	if err != nil {
+		return err
+	}
+	if prev := m.scope; prev != nil && scope != nil && prev.inside != scope.inside &&
+		(prev.before != scope.before || prev.after != scope.after) {
+		return fmt.Errorf("search scope drifted: inside %q -> %q, before %q -> %q, after %q -> %q",
+			prev.inside, scope.inside, prev.before, scope.before, prev.after, scope.after)
+	}
+	m.scope = scope
 	e.DrawOverlay(m.s)
 	_ = e.SelectedText()
 	_, _ = e.SelectedLinesText()
