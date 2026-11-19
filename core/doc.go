@@ -21,4 +21,6 @@
 //   - mathutil.go    — Clamp
 //   - keys.go        — NormalizeKey, the Ctrl+letter fold every key handler
 //     and host applies before matching KeyCtrlA..KeyCtrlZ
+//   - mouse.go       — MouseEventName, EventKey.Name()'s missing counterpart
+//     for a mouse event
 package core

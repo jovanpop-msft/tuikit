@@ -49,12 +49,16 @@ tuikit/
 │               tcell.Screen's drawing half — charts render into it and blit,
 │               tests draw into it and read it back),
 │               tabstrip.go (TabStripSegments/TabLabelWidth: the one tab-bar
-│               column layout, shared by draw and hit-test code)
+│               column layout, shared by draw and hit-test code),
+│               keys.go (NormalizeKey: the Ctrl+letter fold), mouse.go
+│               (MouseEventName: "Shift+Button1", tcell's missing
+│               EventMouse.Name)
 ├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each
 ├── layout/     Panel interface, PanelManager (tabs), Splitter — panel.go,
 │               panel_manager.go, splitter.go
 ├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Confirm/TypedConfirm
-│             (retype-to-confirm)/Prompt (one-line input)/Progress/FileDialog
+│             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
+│             row, then a button)/FileDialog
 │             — FileDialog (every file-path prompt) is file_dialog.go (state),
 │               _draw, _input, _complete (path completion), and file_system.go:
 │               the FileSystem it browses (LocalFileSystem by default; Windows/
@@ -83,8 +87,11 @@ tuikit/
 │   └── editor/ Editor — document.go (the one text-mutation chokepoint; its
 │               version counter keys the syntax/wrap/width caches),
 │               line_buffer.go (builds a document off the UI goroutine for an
-│               O(1) SetLineBuffer), editor.go (state/options), editor_undo.go
-│               (span deltas, capped by steps and bytes), editor_search.go (the
+│               O(1) SetLineBuffer), log_feed.go (LogFeed: a newest-first
+│               capped log for a read-only Editor, synced by PrependLines so
+│               the reader keeps their selection), editor.go (state/options),
+│               editor_undo.go (span deltas, capped by steps and bytes),
+│               editor_search.go (the
 │               one regexp engine for Find/Replace/Replace All), editor_block.go
 │               (column selection + rectangular clipboard), editor_selection.go,
 │               _draw, _wrap, _input, _actions, editor_completion.go (popup;
@@ -116,7 +123,10 @@ tuikit/
 │             — doc.go, common.go, rows.go (Section/Note/Hint/Static),
 │               textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
 │               gridrow.go, editorrow.go, togglegrid.go, listeditor.go
-│               (ListEditor: grid + detail rows + Add/Remove), form.go; sheet.go
+│               (ListEditor: grid + detail rows + Add/Remove), celltoggle.go
+│               (BindCellToggle/NewCellToggleGrid: activate a cell to change
+│               its row), staticblock.go (StaticBlock: detail rows filled
+│               from a selection, cleared as one), form.go; sheet.go
 │               (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
 └── examples/   Runnable programs, not library packages (nothing imports them)
     └── spindemo/  every widgets.Spinner animated side by side, for picking
