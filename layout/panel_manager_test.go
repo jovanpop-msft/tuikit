@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/gdamore/tcell/v3"
@@ -228,5 +229,57 @@ func TestPanelManagerRemovePanelAfterActiveDoesNotChangeActive(t *testing.T) {
 	}
 	if pm.ActiveIndex() != 1 {
 		t.Fatalf("ActiveIndex() = %d, want 1 (unchanged)", pm.ActiveIndex())
+	}
+}
+
+// openerPanel is a fakePanel whose first Button1 opens another panel and
+// switches to it, as a panel's own button does (gossms's Execution Plan
+// "[ Expand ]").
+type openerPanel struct {
+	fakePanel
+	pm     *PanelManager
+	opened *fakePanel
+}
+
+func (p *openerPanel) HandleMouse(ev *tcell.EventMouse) bool {
+	p.fakePanel.HandleMouse(ev)
+	if ev.Buttons() == tcell.Button1 && p.opened == nil {
+		p.opened = &fakePanel{title: "Opened"}
+		p.pm.SetActiveIndex(p.pm.AddPanel(p.opened))
+	}
+	return true
+}
+
+// TestPanelManagerPressThatSwitchesPanelsStaysWithItsPanel: a press that opens
+// and activates another panel, then drags, must not
+// hand its resends to the new panel (a press it never saw begin), and the
+// release must still reach the opener so its press latch resets.
+func TestPanelManagerPressThatSwitchesPanelsStaysWithItsPanel(t *testing.T) {
+	pm := NewPanelManager()
+	op := &openerPanel{fakePanel: fakePanel{title: "Query 1"}, pm: pm}
+	pm.AddPanel(op)
+	pm.SetBounds(0, 0, 80, 24)
+
+	pm.HandleMouse(tcell.NewEventMouse(10, 5, tcell.Button1, tcell.ModNone))
+	if op.opened == nil || pm.ActivePanel() != Panel(op.opened) {
+		t.Fatal("setup: the press did not open and activate the new panel")
+	}
+	pm.HandleMouse(tcell.NewEventMouse(11, 6, tcell.Button1, tcell.ModNone))
+	if len(op.opened.mouse) != 0 {
+		t.Fatalf("new panel got %v mid-gesture, want nothing", op.opened.mouse)
+	}
+
+	pm.HandleMouse(tcell.NewEventMouse(11, 6, tcell.ButtonNone, tcell.ModNone))
+	if want := []tcell.ButtonMask{tcell.Button1, tcell.ButtonNone}; !slices.Equal(op.mouse, want) {
+		t.Fatalf("opener got %v, want %v (press, then the release)", op.mouse, want)
+	}
+	if want := []tcell.ButtonMask{tcell.ButtonNone}; !slices.Equal(op.opened.mouse, want) {
+		t.Fatalf("new panel got %v, want %v (only the release)", op.opened.mouse, want)
+	}
+
+	// The next press is a fresh gesture on the new panel.
+	pm.HandleMouse(tcell.NewEventMouse(10, 5, tcell.Button1, tcell.ModNone))
+	if n := len(op.opened.mouse); n != 2 || op.opened.mouse[1] != tcell.Button1 {
+		t.Fatalf("new panel got %v, want its next press delivered", op.opened.mouse)
 	}
 }

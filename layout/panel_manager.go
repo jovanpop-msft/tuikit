@@ -53,6 +53,19 @@ type PanelManager struct {
 	// HandleScrollbarDrag's "already dragging" test.
 	comboSbDragging bool
 
+	// button1Held tracks whether Button1 is down, wherever the press landed:
+	// unlike press it is set by presses routed on to the active panel too.
+	button1Held bool
+
+	// stranded is the panel that was active when a held press switched panels
+	// (a tab click, or a panel's own button opening another panel). The rest
+	// of that gesture belongs to it, not to the panel now showing: the resends
+	// are swallowed, and the release reaches it off-screen so its latches reset.
+	// Without this, an "[ Expand ]" press-and-drag in gossms delivered the
+	// motion to the plan panel it had just opened, as a press that panel never
+	// saw begin, and the opener kept its press latch until its next click.
+	stranded Panel
+
 	// OnCloseTab, if set, replaces RemovePanel on a tab's [x] click so the
 	// application decides whether to close (e.g. prompt to save a Dirty panel).
 	OnCloseTab func(i int)
@@ -76,6 +89,7 @@ func (pm *PanelManager) switchTo(i int) {
 		return
 	}
 	if old := pm.ActivePanel(); old != nil {
+		pm.strand(old)
 		if a, ok := old.(Activatable); ok {
 			a.SetActive(false)
 		}
@@ -87,6 +101,15 @@ func (pm *PanelManager) switchTo(i int) {
 		}
 	}
 	pm.relayout()
+}
+
+// strand records p as the owner of a held press that is leaving it; see
+// PanelManager.stranded. Only the first switch of a gesture counts: that
+// panel took the press.
+func (pm *PanelManager) strand(p Panel) {
+	if pm.button1Held && pm.stranded == nil {
+		pm.stranded = p
+	}
 }
 
 // AddPanel appends a panel and returns its index.
@@ -105,6 +128,9 @@ func (pm *PanelManager) RemovePanel(i int) {
 		return
 	}
 	wasActive := i == pm.active
+	if wasActive {
+		pm.strand(pm.panels[i])
+	}
 	pm.panels = append(pm.panels[:i], pm.panels[i+1:]...)
 	// Removing a panel left of the active one shifts later indices down; adjust
 	// pm.active to keep pointing at the same panel.
@@ -425,9 +451,18 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 	// panel), so always forward them to end drags cleanly.
 	if pm.press.Release(ev) {
 		pm.comboSbDragging = false
+		pm.button1Held = false
+		if p := pm.stranded; p != nil {
+			pm.stranded = nil
+			p.HandleMouse(tcell.NewEventMouse(-1, -1, tcell.ButtonNone, ev.Modifiers()))
+		}
 		if p := pm.ActivePanel(); p != nil {
 			return p.HandleMouse(ev)
 		}
+		return false
+	}
+	if ev.Buttons() == tcell.Button1 {
+		pm.button1Held = true
 	}
 
 	// The drop-down's scrollbar goes ahead of the bounds check (a latched drag owns
@@ -532,7 +567,8 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 	// resends must not reach the panel underneath. The branches above return early
 	// only while their latch still matches: selecting from the drop-down closes it,
 	// leaving nothing to match, and the held press would hit the newly active panel.
-	if pm.press.Held() && ev.Buttons() == tcell.Button1 {
+	// Likewise a press the previous panel took before the switch (stranded).
+	if (pm.press.Held() || pm.stranded != nil) && ev.Buttons() == tcell.Button1 {
 		return true
 	}
 
