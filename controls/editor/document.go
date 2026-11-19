@@ -46,23 +46,13 @@ type Document struct {
 	lineW         []int
 
 	// dirtyFrom is the lowest line index the most recent mutation could have
-	// changed the meaning of: the edited line for setLine, 0 for anything that
-	// moved lines. A cache exactly one version behind can resume from here instead
-	// of replaying the document (see prefixStates). It describes one mutation
-	// only; a cache further behind has to start over.
+	// changed the meaning of: the edited line for setLine, the span's first line
+	// for replaceRange, 0 for anything that moved lines. It describes one mutation
+	// only, and says nothing about where that mutation's reach ends. It reaches a
+	// host as TextRevision.DirtyFrom, for a cache that only needs the unchanged
+	// prefix and so has no convergence step; a cache that must know which lines
+	// changed (prefixStates, the wrap and search caches) reads changedSince.
 	dirtyFrom int
-
-	// dirtyTo bounds that range above: the line after the last one the mutation
-	// touched, or -1 when it could have changed every line from dirtyFrom down. Only
-	// setLine gives a bound, always dirtyFrom+1 (one line, same line count).
-	//
-	// prefixStates doesn't need it: a state replay stops where it converges, so an
-	// over-wide range costs time, not correctness. A cache indexed by line and
-	// spliced in place (the search match list) does: replaceRange leaves dirtyFrom >
-	// 0 with the line count unchanged whenever a span is replaced by one of equal
-	// length (every same-size undo), and rescanning only dirtyFrom would keep stale
-	// entries for the rest of the span.
-	dirtyTo int
 
 	// splices records the reach of the most recent mutations, one slot per version
 	// (slot version%len), for changedSince: the dirty range a cache *more* than one
@@ -151,7 +141,7 @@ func (d *Document) setLine(i int, line []rune) {
 	}
 	d.version++
 	d.maxWidthValid = false
-	d.dirtyFrom, d.dirtyTo = i, i+1
+	d.dirtyFrom = i
 	d.logSplice(splice{row: i, old: 1, new: 1})
 }
 
@@ -209,8 +199,8 @@ func (d *Document) replaceRange(row, n int, with [][]rune) {
 // Nothing else should call this directly.
 //
 // `from` must be the lowest line the mutation could have changed the meaning of,
-// not merely the lowest whose *text* changed: the surviving widths and the resume
-// in prefixStates.at take it as a promise that every earlier line is untouched. It
+// not merely the lowest whose *text* changed: the surviving widths and
+// TextRevision.DirtyFrom take it as a promise that every earlier line is untouched. It
 // is never past the end of the new buffer (lines before a splice survive it), so
 // maxDisplayWidth only ever extends lineW. When in doubt, 0 is always correct.
 func (d *Document) touch(from int) {
@@ -219,7 +209,7 @@ func (d *Document) touch(from int) {
 	if from < len(d.lineW) {
 		d.lineW = d.lineW[:from]
 	}
-	d.dirtyFrom, d.dirtyTo = from, -1
+	d.dirtyFrom = from
 	d.logSplice(splice{old: -1})
 }
 

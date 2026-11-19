@@ -41,13 +41,15 @@ func newFakeWindowsFS() *fakeWindowsFS {
 	}}
 }
 
+// List matches dir case-insensitively, as a Windows host does.
 func (f *fakeWindowsFS) List(dir string) ([]FileEntry, error) {
 	f.listCalls++
-	entries, ok := f.tree[dir]
-	if !ok {
-		return nil, errors.New("no such directory: " + dir)
+	for k, entries := range f.tree {
+		if strings.EqualFold(k, dir) {
+			return entries, nil
+		}
 	}
-	return entries, nil
+	return nil, errors.New("no such directory: " + dir)
 }
 
 func (f *fakeWindowsFS) Default() string { return `C:\Backup` }
@@ -248,6 +250,123 @@ func TestCompletionIgnoresTheParentRow(t *testing.T) {
 	if got := d.nameField.Value(); got != `old\` {
 		t.Errorf("nameField = %q, want %q", got, `old\`)
 	}
+}
+
+// Windows names match case-insensitively, so Tab completion must too. Matching
+// bytes exactly found no candidate for "health", and the KeyTab fall-through
+// then moved focus out of the field: no completion, and the user thrown out of
+// the word they were typing.
+func TestCompletionFoldsCaseOnAWindowsHost(t *testing.T) {
+	fs := newFakeWindowsFS()
+	d := NewFileDialog()
+	d.ShowSaveOn(fs, "Backup Destination", `C:\Backup\`, nil)
+
+	d.setFocus(ffName)
+	d.nameField.SetValue("health")
+	afterLoad, existsBefore := fs.listCalls, fs.existsCalls
+	d.HandleKey(tcell.NewEventKey(tcell.KeyTab, "", tcell.ModNone))
+	if got := d.nameField.Value(); got != "HealthClinic_full.bak" {
+		t.Errorf("name after Tab = %q, want %q", got, "HealthClinic_full.bak")
+	}
+	if d.focus != ffName {
+		t.Errorf("focus after a completing Tab = %d, want the name field (%d)", d.focus, ffName)
+	}
+	if fs.listCalls != afterLoad || fs.existsCalls != existsBefore {
+		t.Errorf("completion cost %d List and %d Exists call(s), want 0",
+			fs.listCalls-afterLoad, fs.existsCalls-existsBefore)
+	}
+
+	// An ambiguous folded prefix stops at what the candidates share, in the
+	// first candidate's casing.
+	d.nameField.SetValue("B")
+	if !d.completeField(d.nameField, false) {
+		t.Fatal(`completeField("B") = false, want "backup_test_full.bak"`)
+	}
+	if got := d.nameField.Value(); got != "backup_test_full.bak" {
+		t.Errorf("name = %q, want %q", got, "backup_test_full.bak")
+	}
+	d.entries = append(d.entries, FileEntry{Name: "BACKUP_TEST_diff.bak"})
+	d.nameField.SetValue("Backup_t")
+	if !d.completeField(d.nameField, false) {
+		t.Fatal(`completeField("Backup_t") = false, want the shared folded prefix`)
+	}
+	if got := d.nameField.Value(); got != "backup_test_" {
+		t.Errorf("name = %q, want %q (shared folded prefix, first candidate's casing)", got, "backup_test_")
+	}
+}
+
+func TestPathCompletionFoldsCaseOnAWindowsHost(t *testing.T) {
+	fs := newFakeWindowsFS()
+	d := NewFileDialog()
+	d.ShowOpenOn(fs, "Select Backup File", `C:\Backup\`, nil)
+
+	d.pathField.SetValue(`c:\back`)
+	if !d.completeField(d.pathField, true) {
+		t.Fatal(`completeField("c:\back") = false, want "c:\Backup\"`)
+	}
+	if got := d.pathField.Value(); got != `c:\Backup\` {
+		t.Errorf("path = %q, want %q", got, `c:\Backup\`)
+	}
+
+	// A fully typed name in the wrong case is still a completion: the value takes
+	// the on-disk casing and the directory separator.
+	d.setFocus(ffPath)
+	d.pathField.SetValue(`C:\backup`)
+	d.HandleKey(tcell.NewEventKey(tcell.KeyTab, "", tcell.ModNone))
+	if got := d.pathField.Value(); got != `C:\Backup\` {
+		t.Errorf("path after Tab = %q, want %q", got, `C:\Backup\`)
+	}
+	if d.focus != ffPath {
+		t.Errorf("focus after a completing Tab = %d, want the path field (%d)", d.focus, ffPath)
+	}
+
+	// "c:\backup\" names the directory already listed, so completing in it must
+	// not list it again.
+	afterLoad := fs.listCalls
+	d.pathField.SetValue(`c:\backup\o`)
+	if !d.completeField(d.pathField, true) {
+		t.Fatal(`completeField("c:\backup\o") = false, want "old\"`)
+	}
+	if got := d.pathField.Value(); got != `c:\backup\old\` {
+		t.Errorf("path = %q, want %q", got, `c:\backup\old\`)
+	}
+	if fs.listCalls != afterLoad {
+		t.Errorf("List called %d extra time(s) for the listed directory in another case, want 0",
+			fs.listCalls-afterLoad)
+	}
+}
+
+// A case-sensitive host must not fold: "Var" is not "var" there.
+func TestCompletionStaysCaseSensitiveOnAPosixHost(t *testing.T) {
+	fs := &fakePosixFS{entries: []FileEntry{{Name: "var", IsDir: true}, {Name: "HealthClinic_full.bak"}}}
+	d := NewFileDialog()
+	d.ShowOpenOn(fs, "Select Backup File", "/", nil)
+
+	for _, tc := range []struct {
+		val      string
+		dirsOnly bool
+	}{{"Var", true}, {"health", false}} {
+		f := d.nameField
+		if tc.dirsOnly {
+			f = d.pathField
+		}
+		f.SetValue(tc.val)
+		if d.completeField(f, tc.dirsOnly) {
+			t.Errorf("completeField(%q) completed to %q on a case-sensitive host", tc.val, f.Value())
+		}
+	}
+}
+
+// fakePosixFS is a one-directory "/"-rooted host.
+type fakePosixFS struct {
+	PosixPathRules
+	entries []FileEntry
+}
+
+func (f *fakePosixFS) List(string) ([]FileEntry, error) { return f.entries, nil }
+func (f *fakePosixFS) Default() string                  { return "/" }
+func (f *fakePosixFS) Exists(string) (bool, bool, error) {
+	return false, false, nil
 }
 
 // Enter in the path bar on a name the listing already carries must not cost
