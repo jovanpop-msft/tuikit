@@ -61,7 +61,10 @@ tuikit/
 │               Posix path rules for a remote one — see ShowOpenOn/ShowSaveOn,
 │               and BlockingFileSystem for the "Listing ..." repaint);
 │               field_gesture.go (FieldGesture: a dialog's drag latch for a
-│               gesture begun in one of its controls)
+│               gesture begun in one of its controls), focus_ring.go
+│               (SetFocusIn, NextFocus, ButtonRowKey, ClipboardFieldAt,
+│               ForwardReleaseToFocusedField …: the operations over a host
+│               dialog's flat []core.Focusable ring)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
@@ -98,6 +101,13 @@ tuikit/
 │               history.go, stacked_history.go, barchart.go, stacked_bar.go,
 │               vbar.go, kpi.go, panel_title.go (a chart panel's heading row),
 │               readout.go (the box a click on a chart pins: size, placement, draw)
+├── clipboard/  The system clipboard behind a host's Copy/Paste — native.go
+│               (Write/Read through pbcopy, wl-copy, xclip or xsel),
+│               native_windows.go (the Win32 CF_UNICODETEXT path; tuikit's one
+│               GOOS-suffixed file), terminal.go (TerminalLikely: did an OSC 52
+│               write probably land), paste.go (PasteBuffer: a bracketed
+│               paste's keys as one text; StripBOMs). Synchronous: the host
+│               calls Write/Read off its UI goroutine
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
 │               mockscreen.go (NewMockScreen: tcell's own screen on a mock
@@ -128,6 +138,7 @@ controls         → controls/editor
 layout           —
 dialogs          → widgets
 propsheet        → dialogs, controls, controls/editor, widgets
+clipboard        imports no tuikit package, not even core/theme (tcell only)
 examples/*       → whatever they demonstrate; nothing imports them
 ```
 
@@ -138,6 +149,9 @@ examples/*       → whatever they demonstrate; nothing imports them
   `ValueViewer` (DataGrid's "Show Value"), which embeds an `Editor`.
 - **propsheet** is the top, composing `dialogs.ModalDialog`,
   `controls.DataGrid`/`ListBox`, `editor.Editor` (EditorRow) and `widgets`.
+- **clipboard** is outside the widget graph: no widget calls it. A widget
+  hands text over through `core.ClipboardTarget`; the host moves it to and
+  from the system clipboard with this package.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`

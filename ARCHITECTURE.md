@@ -34,6 +34,12 @@ or owns a timer:
   An async `FileSystem` was deliberately not built: it turns Tab completion
   and the overwrite check into callback chains for a wait the indicator
   explains.
+- `clipboard.Write`/`Read` block on a shell-out or the Win32 clipboard lock
+  (bounded, about two seconds) and start no goroutine: the host runs them on
+  its own and posts the result back. The OSC 52 fallback (tcell's
+  `SetClipboard`/`GetClipboard`) writes to the terminal, so it belongs on the
+  UI goroutine, and a host with several copies in flight orders them itself
+  (newest wins) — the package keeps no such state.
 
 ## Mouse gestures
 
@@ -95,7 +101,9 @@ Two consequences:
 
 - A host with an early `return` in `HandleMouse` forwards `ButtonNone` to its
   latch-bearing children first, or a drag ending outside leaves a child
-  latched and swallowing its next press.
+  latched and swallowing its next press. A dialog driving a flat focus ring
+  forwards it to its focused text field with
+  `dialogs.ForwardReleaseToFocusedField`.
 - A host that opens a dialog from a press (a context-menu item) drops the
   held `Button1` when its modal layer changes mid-gesture; otherwise
   twitching before release fires whatever dialog button is under the pointer.
