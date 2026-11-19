@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/tuikittest"
 )
 
@@ -120,6 +121,112 @@ func TestSplitterLimits(t *testing.T) {
 		sp.SetLimits(lim[0], lim[1])
 		if sp.minRatio != 0.2 || sp.maxRatio != 0.6 {
 			t.Errorf("SetLimits(%v, %v) changed the limits to %v–%v", lim[0], lim[1], sp.minRatio, sp.maxRatio)
+		}
+	}
+}
+
+// TestSplitterDragKeepsBarUnderPointer pins bug 3 of the 2026-11-19 round-2
+// review: a drag stored ratioBase+delta/size, and SplitPos's floor landed one
+// cell short whenever float error left size*ratio just below the integer (10
+// of the columns from 0.3 on 80 wide). Every column the limits allow must put
+// the bar exactly under the pointer, in both directions and both orientations.
+func TestSplitterDragKeepsBarUnderPointer(t *testing.T) {
+	for _, dir := range []SplitterDir{SplitterVertical, SplitterHorizontal} {
+		for size := 10; size <= 300; size++ {
+			for _, start := range []float64{0.25, 0.3, 0.5, 0.7} {
+				for _, reverse := range []bool{false, true} {
+					sp := NewSplitter(dir, start)
+					const origin = 3
+					at := func(p int) (int, int) { return p, 5 }
+					if dir == SplitterHorizontal {
+						sp.SetBounds(0, origin, 40, size)
+						at = func(p int) (int, int) { return 5, p }
+					} else {
+						sp.SetBounds(origin, 0, size, 40)
+					}
+					if !sp.HandleMouse(tuikittest.Press(at(sp.SplitPos()))) {
+						t.Fatalf("dir %v size %d start %v: press on the bar not consumed", dir, size, start)
+					}
+					for i := range size {
+						p := origin + i
+						if reverse {
+							p = origin + size - 1 - i
+						}
+						sp.HandleMouse(tuikittest.Press(at(p)))
+						r := (float64(i) + 0.5) / float64(size)
+						if reverse {
+							r = (float64(size-1-i) + 0.5) / float64(size)
+						}
+						if r < sp.minRatio || r > sp.maxRatio {
+							continue
+						}
+						if got := sp.SplitPos(); got != p {
+							t.Fatalf("dir %v size %d start %v reverse %v: pointer at %d, bar at %d", dir, size, start, reverse, p, got)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// A fixed 0.05 ratio step is half a cell on a 10-wide split; every press must
+// move the bar at least one cell.
+func TestSplitterKeyStepMovesAtLeastOneCell(t *testing.T) {
+	sp := NewSplitter(SplitterVertical, 0.3)
+	sp.SetBounds(0, 0, 10, 5)
+	for range 4 {
+		before := sp.SplitPos()
+		if !sp.HandleKey(tuikittest.Key(tcell.KeyRight, tcell.ModCtrl)) {
+			t.Fatalf("Ctrl+Right not consumed")
+		}
+		if got := sp.SplitPos(); got != before+1 {
+			t.Fatalf("Ctrl+Right moved the bar %d -> %d, want one cell", before, got)
+		}
+	}
+	before := sp.SplitPos()
+	sp.HandleKey(tuikittest.Key(tcell.KeyLeft, tcell.ModCtrl))
+	if got := sp.SplitPos(); got != before-1 {
+		t.Fatalf("Ctrl+Left moved the bar %d -> %d, want one cell", before, got)
+	}
+
+	// On 80 wide the step is round(0.05*80) = 4 cells.
+	wide := NewSplitter(SplitterHorizontal, 0.5)
+	wide.SetBounds(0, 0, 40, 80)
+	before = wide.SplitPos()
+	wide.HandleKey(tuikittest.Key(tcell.KeyDown, tcell.ModCtrl))
+	if got := wide.SplitPos(); got != before+4 {
+		t.Fatalf("Ctrl+Down on 80 high moved the bar %d -> %d, want 4 cells", before, got)
+	}
+	if wide.HandleKey(tuikittest.Key(tcell.KeyRight, tcell.ModCtrl)) {
+		t.Errorf("Ctrl+Right consumed by a horizontal splitter")
+	}
+	if wide.HandleKey(tuikittest.Key(tcell.KeyDown, tcell.ModCtrl, tcell.ModShift)) {
+		t.Errorf("Ctrl+Shift+Down consumed by the splitter")
+	}
+}
+
+// SetLimits allows a max of 1, which put the bar one past the rect and gave
+// SecondRect a width of -1.
+func TestSplitterBarStaysInsideRect(t *testing.T) {
+	for _, dir := range []SplitterDir{SplitterVertical, SplitterHorizontal} {
+		sp := NewSplitter(dir, 0.5)
+		sp.SetBounds(2, 3, 20, 10)
+		sp.SetLimits(0, 1)
+		sp.SetRatio(1)
+		origin, size := sp.axis()
+		if got := sp.SplitPos(); got != origin+size-1 {
+			t.Errorf("dir %v: ratio 1 puts the bar at %d, want the last cell %d", dir, got, origin+size-1)
+		}
+		if r := sp.SecondRect(); r.W < 0 || r.H < 0 {
+			t.Errorf("dir %v: SecondRect = %+v at ratio 1", dir, r)
+		}
+		sp.SetRatio(0)
+		if got := sp.SplitPos(); got != origin {
+			t.Errorf("dir %v: ratio 0 puts the bar at %d, want %d", dir, got, origin)
+		}
+		if r := sp.FirstRect(); r.W < 0 || r.H < 0 {
+			t.Errorf("dir %v: FirstRect = %+v at ratio 0", dir, r)
 		}
 	}
 }

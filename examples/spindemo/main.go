@@ -51,6 +51,7 @@ func main() {
 			case *tcell.EventResize:
 				s.Sync()
 			case *tcell.EventKey:
+				e = core.NormalizeKey(e)
 				if e.Key() == tcell.KeyCtrlQ || e.Key() == tcell.KeyEscape ||
 					(core.EvRune(e) == 'q' && e.Modifiers() == 0) {
 					return

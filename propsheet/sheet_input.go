@@ -29,6 +29,7 @@ func (p *PropertySheet) focusedRowHandles(ev *tcell.EventKey) bool {
 // page list, the button row (only Cancel acts) and Escape still work. See
 // formLocked.
 func (p *PropertySheet) HandleKey(ev *tcell.EventKey) bool {
+	ev = core.NormalizeKey(ev) // Ctrl+Z matches the KeyCtrlZ form
 	if !p.Visible() {
 		return false
 	}

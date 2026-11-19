@@ -1,6 +1,9 @@
 package editor
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // ---------------------------------------------------------------------------
 // Helpers shared across more than one file in this package
@@ -35,21 +38,12 @@ type prefixStates[S comparable] struct {
 // depends on which cache generation drew it (flicker while scrolling).
 func (c *prefixStates[S]) at(doc *Document, idx int, zero S, step func(line []rune, in S) S) S {
 	switch {
-	case !c.valid || c.doc != doc || len(c.states) != doc.Len():
-		// The length test is what makes the resume branch below safe for the
-		// mutations that can change the line count — replaceRange leaves a
-		// dirtyFrom of its span's first line whether or not the span kept its
-		// length, and states[] is indexed by line, so a document that grew or
-		// shrank has to start over.
-		c.replay(doc, 0, zero, step, false)
+	case !c.valid || c.doc != doc:
+		c.replay(doc, 0, zero, step, doc.Len())
 	case c.version == doc.Version():
 		// Nothing has changed since the last replay.
-	case c.version+1 == doc.Version() && doc.dirtyFrom > 0:
-		// Exactly one mutation since, and it left every line above dirtyFrom
-		// alone, so every state at or before that line is still correct.
-		c.replay(doc, doc.dirtyFrom, zero, step, true)
 	default:
-		c.replay(doc, 0, zero, step, false)
+		c.resume(doc, zero, step)
 	}
 	if idx < 0 || idx >= len(c.states) {
 		return zero
@@ -57,14 +51,50 @@ func (c *prefixStates[S]) at(doc *Document, idx int, zero S, step func(line []ru
 	return c.states[idx]
 }
 
-// replay recomputes states[from:].
+// resume brings states[] up to date through the document's splice log.
 //
-// stopOnConverge ends the walk as soon as a recomputed state matches the stored
-// one: the carried state has rejoined the previous scan, so no later line can
-// differ. Typing in a large script then costs the lines whose meaning changed, not
-// the whole document: outside a comment it converges on the next line, and only
-// an edit that opens or closes one propagates further.
-func (c *prefixStates[S]) replay(doc *Document, from int, zero S, step func(line []rune, in S) S, stopOnConverge bool) {
+// changedSince names one span covering every mutation since the cached version:
+// lines [row, row+oldN) became [row, row+newN), and every line outside it is the
+// same text. states[] is spliced to match, so the entries after the span keep
+// their (shifted) old values, and the replay starts at row. It may stop where a
+// recomputed state matches the stored one only past the span, at row+newN or
+// later: a line inside it is new text, so a state that matches on entering it
+// says nothing about the lines below. Resuming from the mutation's first line
+// alone (the old dirtyFrom rule) stopped there, and a same-count multi-line splice
+// (the undo of Ctrl+/ over a selection, Move Lines) left every state below it
+// stale.
+func (c *prefixStates[S]) resume(doc *Document, zero S, step func(line []rune, in S) S) {
+	row, oldN, newN, ok := doc.changedSince(c.version)
+	if !ok || row+oldN > len(c.states) || len(c.states)-oldN+newN != doc.Len() {
+		c.replay(doc, 0, zero, step, doc.Len())
+		return
+	}
+	// The state line row begins in depends only on the lines above it, none of
+	// which changed. Read it before the splice overwrites the slot.
+	in := zero
+	switch {
+	case row == 0:
+	case row < len(c.states):
+		in = c.states[row]
+	default:
+		// The span starts past the old last line (an append): carry the
+		// unchanged last line's state through it.
+		in = step(doc.Line(row-1), c.states[row-1])
+	}
+	c.states = slices.Replace(c.states, row, row+oldN, make([]S, newN)...)
+	c.replay(doc, row, in, step, row+newN)
+}
+
+// replay recomputes states[from:], with in the state line from begins in.
+//
+// From line convergeFrom on, the walk ends as soon as a recomputed state matches
+// the stored one: the carried state has rejoined the previous scan, so no later
+// line can differ. Typing in a large script then costs the lines whose meaning
+// changed, not the whole document: outside a comment it converges on the next
+// line, and only an edit that opens or closes one propagates further.
+// convergeFrom must be past every line whose text changed since states[] was last
+// right; doc.Len() disables the stop.
+func (c *prefixStates[S]) replay(doc *Document, from int, in S, step func(line []rune, in S) S, convergeFrom int) {
 	n := doc.Len()
 	if cap(c.states) < n {
 		grown := make([]S, n)
@@ -73,15 +103,8 @@ func (c *prefixStates[S]) replay(doc *Document, from int, zero S, step func(line
 	}
 	c.states = c.states[:n]
 
-	in := zero
-	if from > 0 && from < n {
-		// states[from] describes lines before `from`, none of which moved.
-		in = c.states[from]
-	} else {
-		from = 0
-	}
 	for i := from; i < n; i++ {
-		if stopOnConverge && i > from && c.states[i] == in {
+		if i >= convergeFrom && c.states[i] == in {
 			break
 		}
 		c.states[i] = in

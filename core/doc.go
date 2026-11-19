@@ -19,4 +19,6 @@
 //   - tabstrip.go    — TabStripSegments/TabLabelWidth, the column layout every
 //     tab bar draws and hit-tests with, so the two can't drift apart
 //   - mathutil.go    — Clamp
+//   - keys.go        — NormalizeKey, the Ctrl+letter fold every key handler
+//     and host applies before matching KeyCtrlA..KeyCtrlZ
 package core

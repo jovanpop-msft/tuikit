@@ -329,11 +329,9 @@ func TestPrefixStatesResumeHandlesLineCountChanges(t *testing.T) {
 }
 
 // TestPrefixStatesIncrementalReplayAfterReplaceRange covers the resume path
-// for the *other* mutation that now leaves a non-zero dirtyFrom. replaceRange
-// (undo, redo) used to reset it to 0 and force a full replay; it now names its
-// span's first line, which makes the resume branch reachable for a splice that
-// happens to keep the line count — and only the length test in
-// prefixStates.at keeps it off the ones that don't.
+// for replaceRange (undo, redo, Move Lines): prefixStates.resume splices its
+// states to the span changedSince reports, whether or not the span kept its
+// line count, and re-lexes from the span's first line.
 //
 // Every case is checked against toyFullReplay over the whole document,
 // so a resume that trusts a stale earlier state shows up as a wrong colour
@@ -361,8 +359,7 @@ func TestPrefixStatesIncrementalReplayAfterReplaceRange(t *testing.T) {
 		{"a one-line span opens a comment", 4, 1, []string{"SELECT 3 /* now open"}},
 		{"a one-line span closes it", 5, 1, []string{"SELECT 4 */"}},
 		{"a two-line span, same length", 1, 2, []string{"SELECT 1b", "SELECT 1c"}},
-		// Line count changes: must fall back to a full replay however few
-		// versions behind the cache is.
+		// Line count changes: the states splice must follow it.
 		{"the span grows", 2, 1, []string{"/* reopened", "inside", "*/ done"}},
 		{"the span shrinks", 1, 3, []string{"SELECT 2 /* left open"}},
 		{"a span at line 0", 0, 1, []string{"SELECT 0 */"}},

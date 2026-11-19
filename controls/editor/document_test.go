@@ -148,7 +148,7 @@ func TestReplaceRangeKeepsTheWidthsOfLinesAboveItsSpan(t *testing.T) {
 		t.Errorf("after replaceRange(2, ...) %d widths survive, want the 2 above the span", len(d.lineW))
 	}
 	if d.dirtyFrom != 2 {
-		t.Errorf("dirtyFrom = %d after replaceRange(2, ...), want 2 — prefixStates resumes from it", d.dirtyFrom)
+		t.Errorf("dirtyFrom = %d after replaceRange(2, ...), want 2 — TextRevision.DirtyFrom reports it", d.dirtyFrom)
 	}
 }
 

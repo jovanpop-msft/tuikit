@@ -378,6 +378,7 @@ func (f *InputField) displayRunes() []rune {
 // acts on; Up/Down, Tab/Backtab, Esc, Enter and plain modifiers return false so
 // a caller like propsheet.Form can cycle focus.
 func (f *InputField) HandleKey(ev *tcell.EventKey) bool {
+	ev = core.NormalizeKey(ev) // Ctrl+A/Ctrl+U match the KeyCtrlA..KeyCtrlZ form
 	if !f.focused || f.disabled {
 		return false
 	}

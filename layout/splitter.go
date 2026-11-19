@@ -23,16 +23,16 @@ const (
 // Splitter is a draggable divider between two panel regions.
 // It owns the geometry calculation; the caller owns the two child panels.
 type Splitter struct {
-	rect      core.Rect
-	dir       SplitterDir
-	ratio     float64 // fraction of the rect dimension given to the first pane
-	minRatio  float64
-	maxRatio  float64
-	dragging  bool
-	dragBase  int // screen coordinate where drag started
-	ratioBase float64
-	label     string // optional label drawn on the splitter bar
-	active    bool   // see Focus
+	rect     core.Rect
+	dir      SplitterDir
+	ratio    float64 // fraction of the rect dimension given to the first pane
+	minRatio float64
+	maxRatio float64
+	dragging bool
+	dragBase int    // screen coordinate where drag started
+	posBase  int    // SplitPos when the drag started
+	label    string // optional label drawn on the splitter bar
+	active   bool   // see Focus
 
 	// press is held from the first Button1 of a gesture until its release,
 	// wherever the press landed: HandleMouse calls Fresh on every event, not only
@@ -100,12 +100,39 @@ func (sp *Splitter) SetRatio(r float64) {
 	sp.ratio = core.Clamp(r, sp.minRatio, sp.maxRatio)
 }
 
-// SplitPos returns the absolute screen coordinate of the divider line.
-func (sp *Splitter) SplitPos() int {
+// axis returns the start and length of the rect along the split direction.
+func (sp *Splitter) axis() (origin, size int) {
 	if sp.dir == SplitterHorizontal {
-		return sp.rect.Y + int(float64(sp.rect.H)*sp.ratio)
+		return sp.rect.Y, sp.rect.H
 	}
-	return sp.rect.X + int(float64(sp.rect.W)*sp.ratio)
+	return sp.rect.X, sp.rect.W
+}
+
+// SplitPos returns the absolute screen coordinate of the divider line. It
+// stays inside the rect whatever the ratio: a ratio of 1 (SetLimits allows
+// it) would otherwise put the bar one past the end and give SecondRect a
+// negative size.
+func (sp *Splitter) SplitPos() int {
+	origin, size := sp.axis()
+	if size <= 0 {
+		return origin
+	}
+	return core.Clamp(origin+int(float64(size)*sp.ratio), origin, origin+size-1)
+}
+
+// setPos moves the bar to the cell target, within the limits. The ratio is
+// stored at the cell's centre so SplitPos's floor returns target exactly: a
+// ratio built as ratioBase+delta/size lands just below the integer often
+// enough (a tenth of the columns from 0.3 on 80 wide) that the bar trailed
+// the pointer by one cell. A zero size has nothing to measure against, so
+// the ratio holds (0/0 is NaN, which core.Clamp passes through).
+func (sp *Splitter) setPos(target int) {
+	origin, size := sp.axis()
+	if size <= 0 {
+		return
+	}
+	r := (float64(target-origin) + 0.5) / float64(size)
+	sp.ratio = core.Clamp(r, sp.minRatio, sp.maxRatio)
 }
 
 // FirstRect returns the rect for the first (top or left) pane.
@@ -151,34 +178,30 @@ func (sp *Splitter) Draw(s tcell.Screen) {
 	}
 }
 
-// HandleKey adjusts the ratio with Ctrl+Arrow. Shift must be unheld so it
+// HandleKey moves the bar with Ctrl+Arrow, a twentieth of the rect per press
+// but never less than one cell: a fixed 0.05 ratio step is half a cell on a
+// 10-wide split, so some presses didn't move it. Shift must be unheld so it
 // doesn't swallow Ctrl+Shift combos (e.g. the editor's "move line").
 func (sp *Splitter) HandleKey(ev *tcell.EventKey) bool {
-	const step = 0.05
 	isResizeMod := ev.Modifiers()&tcell.ModCtrl != 0 && ev.Modifiers()&tcell.ModShift == 0
 	if !isResizeMod {
 		return false
 	}
+	back, fwd := tcell.KeyLeft, tcell.KeyRight
 	if sp.dir == SplitterHorizontal {
-		if ev.Key() == tcell.KeyUp {
-			sp.ratio = core.Clamp(sp.ratio-step, sp.minRatio, sp.maxRatio)
-			return true
-		}
-		if ev.Key() == tcell.KeyDown {
-			sp.ratio = core.Clamp(sp.ratio+step, sp.minRatio, sp.maxRatio)
-			return true
-		}
-	} else {
-		if ev.Key() == tcell.KeyLeft {
-			sp.ratio = core.Clamp(sp.ratio-step, sp.minRatio, sp.maxRatio)
-			return true
-		}
-		if ev.Key() == tcell.KeyRight {
-			sp.ratio = core.Clamp(sp.ratio+step, sp.minRatio, sp.maxRatio)
-			return true
-		}
+		back, fwd = tcell.KeyUp, tcell.KeyDown
 	}
-	return false
+	_, size := sp.axis()
+	step := max(1, int(math.Round(0.05*float64(size))))
+	switch ev.Key() {
+	case back:
+		sp.setPos(sp.SplitPos() - step)
+	case fwd:
+		sp.setPos(sp.SplitPos() + step)
+	default:
+		return false
+	}
+	return true
 }
 
 // HandleMouse handles drag events on the bar and reports whether it consumed
@@ -205,7 +228,7 @@ func (sp *Splitter) HandleMouse(ev *tcell.EventMouse) bool {
 		} else {
 			sp.dragBase = mx
 		}
-		sp.ratioBase = sp.ratio
+		sp.posBase = pos
 		return true
 	}
 	if sp.dragging {
@@ -213,18 +236,13 @@ func (sp *Splitter) HandleMouse(ev *tcell.EventMouse) bool {
 			sp.dragging = false
 			return true
 		}
-		// A resize to zero mid-drag would divide by zero (0/0 is NaN, which
-		// core.Clamp passes through), so the ratio holds until there is a
-		// dimension to measure against.
+		// Tracked in cells, not ratio, so the bar sits under the pointer
+		// (see setPos), which also holds the ratio through a resize to zero.
+		at := mx
 		if sp.dir == SplitterHorizontal {
-			if sp.rect.H > 0 {
-				delta := float64(my-sp.dragBase) / float64(sp.rect.H)
-				sp.ratio = core.Clamp(sp.ratioBase+delta, sp.minRatio, sp.maxRatio)
-			}
-		} else if sp.rect.W > 0 {
-			delta := float64(mx-sp.dragBase) / float64(sp.rect.W)
-			sp.ratio = core.Clamp(sp.ratioBase+delta, sp.minRatio, sp.maxRatio)
+			at = my
 		}
+		sp.setPos(sp.posBase + at - sp.dragBase)
 		return true
 	}
 	return false

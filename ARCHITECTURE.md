@@ -259,6 +259,13 @@ A hover hint (`Toolbar`, `TreeView`'s title button) is an `Overlay` whose
   test its own focus: the host routes keys to the one it focused.
   (`widgets.InputField` does not follow this yet: it tests its focus and
   claims every key it binds.)
+- **Ctrl+letter is matched in its `KeyCtrlA..KeyCtrlZ` form, after
+  `core.NormalizeKey`.** tcell reports Ctrl+Shift+<letter>, and every
+  Ctrl+<letter> under `tcell.OptAdvancedKeys(true)`, as `KeyRune`+`ModCtrl`.
+  A widget that binds Ctrl+letter calls `core.NormalizeKey` at the top of its
+  `HandleKey` (`InputField`, `Editor`, `PropertySheet` do), and a host that
+  matches Ctrl+letter keys itself calls it once on each key before
+  dispatching. It is idempotent, so both calling it costs nothing.
 - **Mouse return values follow one rule** (`core.MouseHandler`'s doc):
   plain motion is never claimed (hover may be tracked, but `true` only for a
   release ending the control's own gesture, or with an overlay open); a wheel

@@ -301,15 +301,22 @@ func TestFileDialogScrollbarDragScrolls(t *testing.T) {
 func TestCommonPrefixHelper(t *testing.T) {
 	tests := []struct {
 		in   []string
+		fold bool
 		want string
 	}{
-		{[]string{"src"}, "src"},
-		{[]string{"src", "srv"}, "sr"},
-		{[]string{"src", "docs"}, ""},
+		{[]string{"src"}, false, "src"},
+		{[]string{"src", "srv"}, false, "sr"},
+		{[]string{"src", "docs"}, false, ""},
+		{[]string{"Src", "srv"}, false, ""},
+		// Folded, the prefix keeps the first candidate's casing.
+		{[]string{"Src", "sRv"}, true, "Sr"},
+		{[]string{"Ärger", "ärgern"}, true, "Ärger"},
+		// K and the Kelvin sign share a SimpleFold orbit.
+		{[]string{"Kb", "\u212aa"}, true, "K"},
 	}
 	for _, tt := range tests {
-		if got := commonPrefix(tt.in); got != tt.want {
-			t.Errorf("commonPrefix(%v) = %q, want %q", tt.in, got, tt.want)
+		if got := commonPrefix(tt.in, tt.fold); got != tt.want {
+			t.Errorf("commonPrefix(%q, %v) = %q, want %q", tt.in, tt.fold, got, tt.want)
 		}
 	}
 }

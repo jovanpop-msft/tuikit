@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -84,6 +85,11 @@ type PathRules interface {
 	// Separator is the path separator, used to join and to mark directory
 	// rows in the listing.
 	Separator() string
+	// FoldsCase reports whether the host matches names case-insensitively
+	// (Windows, and macOS by default). Tab completion folds case when it does,
+	// so "health" completes to "HealthClinic_full.bak"; matching bytes exactly
+	// there found no candidate and Tab moved focus out of the field instead.
+	FoldsCase() bool
 }
 
 // LocalFileSystem is the FileSystem a FileDialog uses unless the caller
@@ -126,6 +132,13 @@ func (LocalFileSystem) Parent(dir string) string           { return filepath.Dir
 func (LocalFileSystem) IsAbs(path string) bool             { return filepath.IsAbs(path) }
 func (LocalFileSystem) Separator() string                  { return string(filepath.Separator) }
 
+// FoldsCase guesses from the client OS: Windows and macOS's default volumes
+// are case-insensitive. A case-sensitive APFS volume or a case-insensitive
+// mount on Linux gets the wrong answer, which only costs a completion.
+func (LocalFileSystem) FoldsCase() bool {
+	return runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+}
+
 // Exists answers "not there" for a missing path, or one with a file where a
 // directory component should be (ENOTDIR). Any other os.Stat failure (EACCES,
 // EIO) is an inability to answer and is returned, so the save-overwrite guard
@@ -148,6 +161,10 @@ func (LocalFileSystem) Exists(path string) (bool, bool, error) {
 type WindowsPathRules struct{}
 
 func (WindowsPathRules) Separator() string { return `\` }
+
+// FoldsCase is true: NTFS and every other Windows filesystem match names
+// case-insensitively.
+func (WindowsPathRules) FoldsCase() bool { return true }
 
 // IsAbs accepts a drive-letter path ("C:\...") or a UNC path
 // (`\\server\share`).
@@ -246,6 +263,7 @@ type PosixPathRules struct{}
 
 func (PosixPathRules) Separator() string   { return "/" }
 func (PosixPathRules) IsAbs(p string) bool { return strings.HasPrefix(p, "/") }
+func (PosixPathRules) FoldsCase() bool     { return false }
 
 func (PosixPathRules) Split(path string) (dir, name string) {
 	i := strings.LastIndex(path, "/")

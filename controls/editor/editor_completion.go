@@ -43,11 +43,13 @@ type CompletionItem struct {
 }
 
 // TextRevision identifies the revision of the text a CompletionRequest carries,
-// so a provider caching across calls can tell whether it may resume. Same key
-// prefixStates uses: Doc pins which buffer the version counts (two buffers number
-// versions independently from zero), and DirtyFrom describes one mutation only,
-// so a cache more than one version behind must start over. Doc is opaque: a
-// provider compares it for identity only.
+// so a provider caching across calls can tell whether it may resume. Keyed like
+// prefixStates: Doc pins which buffer the version counts (two buffers number
+// versions independently from zero). DirtyFrom describes one mutation only, so a
+// cache more than one version behind must start over, and it bounds only the
+// unchanged prefix, not where the change ends: enough for a cache of that prefix,
+// not for one that stops where a rescan converges. Doc is opaque: a provider
+// compares it for identity only.
 type TextRevision struct {
 	// Doc identifies the buffer. Compare it, don't dereference it.
 	Doc any

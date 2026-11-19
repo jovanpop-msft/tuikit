@@ -20,14 +20,23 @@ type Series struct {
 	Values []float64
 }
 
-// At returns the value at index i, or 0 outside the series: series in one chart
-// may differ in length while a metric fills its buffer, and a missing sample
-// reads as zero rather than shortening the chart.
+// At returns the value at index i counted from the oldest (leftmost) end, or 0
+// outside the series. It is the categorical index StackedBar uses; time-series
+// code reading a bucket index must use AtBucket, which aligns the newest ends.
 func (s Series) At(i int) float64 {
 	if i < 0 || i >= len(s.Values) {
 		return 0
 	}
 	return s.Values[i]
+}
+
+// AtBucket returns the value drawn in bucket i of a time-series chart plotting
+// buckets buckets (BucketCount of its series), or 0 where the series has no
+// sample. Series are aligned at their newest end: one shorter than the chart
+// started later (a rate needs two samples), so its missing samples are the
+// oldest buckets, and its newest value still lands on the newest bucket.
+func (s Series) AtBucket(i, buckets int) float64 {
+	return s.At(i - (buckets - len(s.Values)))
 }
 
 // labelFor returns Label if it fits maxW display columns, else Short if
@@ -71,14 +80,14 @@ func maxValue(series []Series) float64 {
 }
 
 // maxStackTotal is the largest per-bucket sum across every series, for scaling
-// a stacking chart. Negative values don't contribute (a stack has no meaning
+// a stacked history (buckets aligned at the newest end, as AtBucket reads them). Negative values don't contribute (a stack has no meaning
 // below its baseline; the column renderer drops them too).
 func maxStackTotal(series []Series) float64 {
 	max := 0.0
 	for i, n := 0, maxLen(series); i < n; i++ {
 		total := 0.0
 		for _, s := range series {
-			if v := s.At(i); v > 0 {
+			if v := s.AtBucket(i, n); v > 0 {
 				total += v
 			}
 		}

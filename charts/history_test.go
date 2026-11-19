@@ -401,3 +401,40 @@ func TestDrawFrameDrawsWhatDrawDraws(t *testing.T) {
 		}
 	}
 }
+
+// A series that started later is shorter; its newest sample must still land on
+// the newest (rightmost) column, and its missing samples are the oldest buckets.
+// Reading it with At aligned it left: drawn one column early, "now" read as zero.
+func TestHistoryChartAlignsShorterSeriesAtNewestBucket(t *testing.T) {
+	long := make([]float64, 10)
+	for i := range long {
+		long[i] = 1
+	}
+	short := []float64{1, 1, 1, 1, 1, 1, 1, 1, 4}
+	c := core.NewBuffer(20, 6)
+	bareHistory([]Series{
+		{Label: "long", Color: colA, Values: long},
+		{Label: "short", Color: colB, Values: short},
+	}, 4).Draw(c, c.Rect())
+
+	bottom := plotBottom(6)
+	if _, st, _ := c.Get(19, 0); st.GetForeground() != colB {
+		t.Errorf("top of newest column = %v, want the short series' newest value (%v)", st.GetForeground(), colB)
+	}
+	// Bucket 0 is the column 9 left of the newest; the short series has no sample there.
+	if _, st, _ := c.Get(10, bottom); st.GetForeground() != colA {
+		t.Errorf("oldest bucket baseline = %v, want only the long series (%v)", st.GetForeground(), colA)
+	}
+}
+
+func TestSeriesAtBucketAlignsNewestEnds(t *testing.T) {
+	s := Series{Values: []float64{7, 8, 9}}
+	for i, want := range []float64{0, 0, 7, 8, 9, 0} {
+		if got := s.AtBucket(i, 5); got != want {
+			t.Errorf("AtBucket(%d, 5) = %v, want %v", i, got, want)
+		}
+	}
+	if got := s.AtBucket(2, 3); got != 9 {
+		t.Errorf("AtBucket on a full-length series = %v, want At's value 9", got)
+	}
+}
