@@ -39,6 +39,14 @@ type MenuItem struct {
 	// AVAILABILITY GROUP" would send the user to ask for a permission that changes
 	// nothing.
 	NoteWhen func() bool
+
+	// KeepOpen makes activating the item (Enter, or a click) run Action and
+	// leave the menu open with the highlight where it was, instead of closing
+	// it first — a checklist row, ticked several times in one showing. The
+	// labels are the host's to bring up to date: a ContextMenu re-reads its
+	// items from SetRefresh after the action, a MenuBar takes them from the
+	// host's SetMenus. A KeepOpen item that opens a submenu ignores the flag.
+	KeepOpen bool
 }
 
 // enabled reports whether it can be selected or activated right now.

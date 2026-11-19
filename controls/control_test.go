@@ -66,6 +66,10 @@ var (
 		core.Overlay
 		core.ClipboardTarget
 	} = (*ValueViewer)(nil)
+	_ interface {
+		core.Bounded
+		core.MouseHandler
+	} = (*TabBar)(nil)
 )
 
 func TestControlsReportFocus(t *testing.T) {

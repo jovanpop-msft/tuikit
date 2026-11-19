@@ -8,6 +8,10 @@
 //   - buffer.go      — Buffer, an off-screen Screen (chart canvases, test screens)
 //   - drawing.go     — DrawText/DrawBox/FillRect/DrawScrollbar/... primitives
 //   - strutil.go     — DisplayWidth/Truncate/WrapText/PadRight/EvRune
+//   - viewport.go    — Viewport, the offset/clamp/wheel/scrollbars of a view
+//     onto a canvas larger than it in both axes
+//   - wrap_hanging.go — WrapHanging, a wrap that keeps spacing and hangs a
+//     continuation under a line's second column (key references)
 //   - runecol.go     — rune-index <-> terminal-column conversion
 //   - wordutil.go    — word-boundary helpers for Ctrl+arrow navigation
 //   - clipboard.go   — the ClipboardTarget/ClipboardHost interfaces and their

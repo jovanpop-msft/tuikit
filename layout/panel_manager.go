@@ -320,7 +320,7 @@ func (pm *PanelManager) Draw(s tcell.Screen) {
 			panel := pm.panels[i]
 			tabStyle := barStyle
 			if i == pm.active {
-				tabStyle = theme.StyleActiveBlock().Bold(true)
+				tabStyle = theme.StyleTitleActive()
 			}
 			label := " " + tabLabelText(panel) + " "
 			core.DrawText(s, seg[0].X, pm.rect.Y, tabStyle, label)

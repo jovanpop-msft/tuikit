@@ -33,6 +33,10 @@ tuikit/
 ├── theme/      Colour palette + derived tcell.Style helpers — palette.go, styles.go
 ├── core/       Rect geometry, drawing primitives, string/int helpers
 │             — geometry.go, screen.go, drawing.go, strutil.go, mathutil.go,
+│               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
+│               both scrollbars and their drag latches),
+│               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
+│               under a line's second column),
 │               runecol.go (rune index ↔ display column), wordutil.go (word
 │               boundaries for Editor and InputField), clip_screen.go
 │               (ClipScreen: a tcell.Screen that drops writes outside a clip
@@ -55,10 +59,14 @@ tuikit/
 │               EventMouse.Name)
 ├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each
 ├── layout/     Panel interface, PanelManager (tabs), Splitter — panel.go,
-│               panel_manager.go, splitter.go
+│               panel_manager.go, splitter.go, title_bar.go (DrawTitleBar:
+│               a panel's one-row title, active/inactive, optional
+│               right-aligned cell)
 ├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Confirm/TypedConfirm
 │             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
-│             row, then a button)/FileDialog
+│             row, then a button)/Log (read-only newest-first log in a
+│             selectable Editor; Record from any goroutine)/Text (scrollable
+│             reference text, hanging-indent wrap)/FileDialog
 │             — FileDialog (every file-path prompt) is file_dialog.go (state),
 │               _draw, _input, _complete (path completion), and file_system.go:
 │               the FileSystem it browses (LocalFileSystem by default; Windows/
@@ -69,16 +77,21 @@ tuikit/
 │               (SetFocusIn, NextFocus, ButtonRowKey, ClipboardFieldAt,
 │               ForwardReleaseToFocusedField …: the operations over a host
 │               dialog's flat []core.Focusable ring)
-├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TreeView, DataGrid, ListBox
+├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
 │               Cut/Copy/Paste/Select All right-click menu),
 │               choice_items.go (ChoiceItems: a pick-one selector's menu,
 │               the value in force marked with ChoiceMark),
+│               check_items.go (CheckItems: a pick-many checklist's
+│               KeepOpen rows, ticked with CheckMark; ContextMenu.SetRefresh
+│               redraws them in place),
 │               menu_box.go (one box per menu level, root and submenus:
 │               draw, scroll, hit-test, keys for both hosts),
 │               toolbar.go, tool_row.go (a panel's text toolbar: layout,
-│               hit-test, "More ▾"; drawn by the host), treeview.go (with an
+│               hit-test, "More ▾"; drawn by the host), tab_bar.go (TabBar:
+│               a one-row strip of plain tabs plus an optional right-aligned
+│               cell, draw and hit-test over TabStripSegments), treeview.go (with an
 │               optional top-border action, SetTitleButton), listbox.go;
 │               DataGrid: datagrid.go (state/source/widths), _draw, _input,
 │               _overlay (right-click menu, "Show Value");
@@ -146,7 +159,7 @@ charts           —
 controls/editor  —
 controls         → controls/editor
 layout           —
-dialogs          → widgets
+dialogs          → widgets, controls/editor
 propsheet        → dialogs, controls, controls/editor, widgets
 clipboard        imports no tuikit package, not even core/theme (tcell only)
 examples/*       → whatever they demonstrate; nothing imports them
@@ -156,7 +169,8 @@ examples/*       → whatever they demonstrate; nothing imports them
   geometry from `core.TabStripSegments`, as every other tab bar built on
   tuikit does; nothing in tuikit imports `layout`.
 - **controls/editor** is a leaf too: `controls` reaches it only through
-  `ValueViewer` (DataGrid's "Show Value"), which embeds an `Editor`.
+  `ValueViewer` (DataGrid's "Show Value"), and `dialogs` only through
+  `LogDialog`, each of which embeds an `Editor`.
 - **propsheet** is the top, composing `dialogs.ModalDialog`,
   `controls.DataGrid`/`ListBox`, `editor.Editor` (EditorRow) and `widgets`.
 - **clipboard** is outside the widget graph: no widget calls it. A widget

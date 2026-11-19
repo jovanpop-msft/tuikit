@@ -258,6 +258,7 @@ const (
 	menuKeyUnhandled                // the host's: Left/Right on the root, F10, anything unbound
 	menuKeyDismiss                  // Escape on the root: close the menu
 	menuKeyRun                      // close the menu, then call run if non-nil
+	menuKeyKeep                     // call run with the menu left open (MenuItem.KeepOpen)
 )
 
 // handleKey processes a key for the deepest open level. On menuKeyRun the
@@ -292,6 +293,9 @@ func (c *menuCascade) handleKey(ev *tcell.EventKey) (res menuKey, run func()) {
 		}
 		item := b.items[b.hover]
 		if !item.Divider && item.enabled() {
+			if item.KeepOpen {
+				return menuKeyKeep, item.Action
+			}
 			return menuKeyRun, item.Action
 		}
 		if d == 0 {
@@ -306,7 +310,10 @@ func (c *menuCascade) handleKey(ev *tcell.EventKey) (res menuKey, run func()) {
 // handleMouse processes an event that hit reported inside the menu, at
 // (level, item). fresh is the host's PressLatch verdict on it. It reports
 // whether the host must close the whole menu, and the action (possibly nil)
-// to call after.
+// to call after — with dismiss false for a KeepOpen item, whose action runs
+// with the menu still up. Only a fresh press acts, so neither the resends of a
+// held button nor the release that ends the click can tick a checklist row
+// twice.
 //
 // A click anywhere inside the menu that can't act — a divider, a disabled
 // row, a border — still dismisses it, or a disabled item leaves the popup
@@ -331,7 +338,7 @@ func (c *menuCascade) handleMouse(ev *tcell.EventMouse, level, item int, fresh b
 		c.popTo(level)
 	}
 	if fresh && len(it.Sub) == 0 {
-		return true, it.Action
+		return !it.KeepOpen, it.Action
 	}
 	return false, nil
 }

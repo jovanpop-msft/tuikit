@@ -113,7 +113,7 @@ var tuikitLayers = map[string][]string{
 	"controls/editor": {"core", "theme"},
 	"controls":        {"core", "theme", "controls/editor"},
 	"layout":          {"core", "theme"},
-	"dialogs":         {"core", "theme", "widgets"},
+	"dialogs":         {"core", "theme", "widgets", "controls/editor"},
 	"propsheet":       {"core", "theme", "widgets", "dialogs", "controls", "controls/editor"},
 	"tuikittest":      {"core"},
 	"clipboard":       {},
@@ -124,7 +124,8 @@ var tuikitLayers = map[string][]string{
 // TestTuikitLayering pins the one-way graph between tuikit's own packages:
 // layout is a leaf over core/theme (the tab-strip geometry lives in core for
 // that reason), controls/editor is a leaf too (controls reaches it only through
-// ValueViewer), and only propsheet composes dialogs and controls.
+// ValueViewer, dialogs only through LogDialog), and only propsheet composes
+// dialogs and controls.
 func TestTuikitLayering(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go command not on PATH")

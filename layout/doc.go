@@ -1,5 +1,6 @@
 // Package layout provides Panel interface, PanelManager (tab/combo switcher),
-// and Splitter (draggable/keyboard-resizable divider between two regions).
+// Splitter (draggable/keyboard-resizable divider between two regions) and
+// DrawTitleBar (a panel's title row).
 // These types are pure layout infrastructure; they have no dependency on any
 // application-level code.
 //
@@ -7,4 +8,5 @@
 //     (Activatable, Dirty, Closable, Disposable)
 //   - panel_manager.go — PanelManager
 //   - splitter.go      — SplitterDir, Splitter
+//   - title_bar.go     — DrawTitleBar, TitleBarRightRect: a panel's title row
 package layout
