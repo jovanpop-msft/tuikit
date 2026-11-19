@@ -26,6 +26,9 @@ func readOnlySafeKey(ev *tcell.EventKey) bool {
 // Ctrl+Z with nothing to undo answer false, so a host (propsheet.Form) can use
 // the key for its own navigation. A key the editor doesn't bind is false too.
 func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
+	// Ctrl+letter arrives as KeyRune+ModCtrl under advanced key reporting and
+	// for Ctrl+Shift chords; the key table binds the KeyCtrlA..KeyCtrlZ form.
+	ev = core.NormalizeKey(ev)
 	// An open completion popup gets first refusal of list-navigation, commit and
 	// dismiss keys; everything else falls through, and updateCompletion at the end
 	// keeps it in sync.

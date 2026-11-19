@@ -101,10 +101,10 @@ func (h HistoryChart) drawColumns(s tcell.Screen, plot core.Rect, sc Scale) {
 			order = append(order, i)
 		}
 		slices.SortStableFunc(order, func(a, b int) int {
-			return cmp.Compare(h.Series[b].At(idx), h.Series[a].At(idx))
+			return cmp.Compare(h.Series[b].AtBucket(idx, buckets), h.Series[a].AtBucket(idx, buckets))
 		})
 		for _, si := range order {
-			v := h.Series[si].At(idx)
+			v := h.Series[si].AtBucket(idx, buckets)
 			if v <= 0 {
 				continue
 			}
@@ -154,7 +154,7 @@ func ColumnAt(plot core.Rect, idx, buckets int) int {
 }
 
 // BucketCount is how many buckets a set of series plots: its longest member's
-// length, since a metric still filling its buffer reads as zero.
+// length. A shorter member is missing its oldest buckets (Series.AtBucket).
 func BucketCount(series []Series) int { return maxLen(series) }
 
 // legendRowsFor resolves a chart's LegendRows field: negative suppresses

@@ -96,7 +96,7 @@ func (h StackedHistoryChart) drawColumns(s tcell.Screen, plot core.Rect, sc Scal
 		running := 0.0
 		prevCells := 0.0
 		for _, ser := range h.Series {
-			v := ser.At(idx)
+			v := ser.AtBucket(idx, buckets)
 			if v <= 0 {
 				continue
 			}

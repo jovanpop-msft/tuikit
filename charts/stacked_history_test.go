@@ -116,3 +116,32 @@ func TestStackedHistoryEmptyAndZeroInput(t *testing.T) {
 		}
 	}
 }
+
+func TestStackedHistoryAlignsShorterSeriesAtNewestBucket(t *testing.T) {
+	long := make([]float64, 10)
+	for i := range long {
+		long[i] = 1
+	}
+	series := []Series{
+		{Label: "a", Color: colA, Values: long},
+		{Label: "b", Color: colB, Values: []float64{1, 1, 1, 1, 1, 1, 1, 1, 3}},
+	}
+	c := core.NewBuffer(14, 9)
+	bareStacked(series, 8).Draw(c, c.Rect())
+
+	bottom := plotBottom(9)
+	// Newest bucket: 1 + 3 = 4 of 8 rows, the short series on top.
+	if _, st, _ := c.Get(13, bottom-3); st.GetForeground() != colB {
+		t.Errorf("top of newest stack = %v, want the short series (%v)", st.GetForeground(), colB)
+	}
+	// Oldest bucket (9 columns left): only the long series' single row.
+	if col := column(c, 4, bottom, bottom+1); isBlock(col[1]) {
+		t.Errorf("oldest bucket = %q, want one row: the short series has no sample there", string(col))
+	}
+
+	// The auto-scale must sum the same aligned buckets the columns draw.
+	long[9] = 5
+	if got := maxStackTotal(series); got != 8 {
+		t.Errorf("maxStackTotal = %v, want 8 (newest bucket 5 + 3)", got)
+	}
+}
