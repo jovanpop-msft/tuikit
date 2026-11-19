@@ -4,7 +4,10 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
+	"github.com/radix29/tuikit/theme"
+	"github.com/radix29/tuikit/tuikittest"
 )
 
 func newTestToolRow(labels ...string) *ToolRow {
@@ -176,5 +179,98 @@ func TestToolRowRunLabelDropsTheMenuAndDialogMarks(t *testing.T) {
 		if got := runLabel(in); got != want {
 			t.Errorf("runLabel(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// toolRowDrawn lays out a row of A, B, C and a long tail in a row narrow
+// enough for More, and draws it with disabled and moreDim.
+func toolRowDrawn(t *testing.T, mutate func(*ToolRow), disabled func(int) bool, moreDim bool) (*ToolRow, *tuikittest.Screen) {
+	t.Helper()
+	tr := newTestToolRow("A", "B", "C", "A much longer tail label")
+	if mutate != nil {
+		mutate(tr)
+	}
+	r := core.Rect{X: 0, Y: 0, W: 24, H: 1}
+	tr.Layout(r, "")
+	if tr.More.Rect.IsZero() || len(tr.Hidden) == 0 {
+		t.Fatalf("setup: want an overflowed row, got hidden %v More %+v", tr.Hidden, tr.More.Rect)
+	}
+	s := tuikittest.NewScreen(24, 1)
+	tr.Draw(s, r, disabled, moreDim)
+	return tr, s
+}
+
+func cellStyle(s *tuikittest.Screen, c ToolCell) tcell.Style { return s.StyleAt(c.Rect.X+1, c.Rect.Y) }
+
+// TestToolRowDrawPaintsEachCellsState: the bar, a plain cell in the tooltip
+// scheme, a disabled one dimmed, a selected one in the selected look, and a
+// cell both disabled and selected dimmed.
+func TestToolRowDrawPaintsEachCellsState(t *testing.T) {
+	tr, s := toolRowDrawn(t, func(tr *ToolRow) {
+		tr.Cells[1].Disabled = true
+		tr.Cells[2].Selected = true
+	}, nil, false)
+	dim := theme.StyleTooltip().Foreground(theme.Active().TextDim)
+	if got := s.StyleAt(tr.Cells[0].Rect.X-1, 0); got != theme.StyleMenuBar() {
+		t.Errorf("bar margin style = %v, want StyleMenuBar", got)
+	}
+	if got := cellStyle(s, tr.Cells[0]); got != theme.StyleTooltip() {
+		t.Errorf("plain cell style = %v, want StyleTooltip", got)
+	}
+	if got := cellStyle(s, tr.Cells[1]); got != dim {
+		t.Errorf("disabled cell style = %v, want dimmed", got)
+	}
+	if got := cellStyle(s, tr.Cells[2]); got != theme.StyleMenuSelected().Bold(true) {
+		t.Errorf("selected cell style = %v, want StyleMenuSelected bold", got)
+	}
+	if got := cellStyle(s, tr.More); got != theme.StyleTooltip() {
+		t.Errorf("More style = %v, want undimmed without moreDim", got)
+	}
+	if r := s.RuneAt(tr.Cells[0].Rect.X+1, 0); r != 'A' {
+		t.Errorf("cell 0 label rune = %q, want 'A' after one space of padding", r)
+	}
+
+	tr, s = toolRowDrawn(t, func(tr *ToolRow) {
+		tr.Cells[0].Disabled, tr.Cells[0].Selected = true, true
+	}, nil, false)
+	if got := cellStyle(s, tr.Cells[0]); got != dim {
+		t.Errorf("disabled+selected cell style = %v, want dimmed: Disabled wins", got)
+	}
+}
+
+// TestToolRowDrawAsksThePredicateOverTheField: a non-nil disabled replaces
+// the Disabled field, as in Run.
+func TestToolRowDrawAsksThePredicateOverTheField(t *testing.T) {
+	dim := theme.StyleTooltip().Foreground(theme.Active().TextDim)
+	tr, s := toolRowDrawn(t, func(tr *ToolRow) { tr.Cells[0].Disabled = true },
+		func(i int) bool { return i == 1 }, false)
+	if got := cellStyle(s, tr.Cells[0]); got != theme.StyleTooltip() {
+		t.Errorf("field-disabled cell = %v, want undimmed: the predicate decides", got)
+	}
+	if got := cellStyle(s, tr.Cells[1]); got != dim {
+		t.Errorf("predicate-disabled cell = %v, want dimmed", got)
+	}
+}
+
+// TestToolRowDrawDimsMoreOnlyOnMoreDim, whatever the cells' state.
+func TestToolRowDrawDimsMoreOnlyOnMoreDim(t *testing.T) {
+	dim := theme.StyleTooltip().Foreground(theme.Active().TextDim)
+	tr, s := toolRowDrawn(t, nil, func(int) bool { return true }, false)
+	if got := cellStyle(s, tr.More); got != theme.StyleTooltip() {
+		t.Errorf("More with every cell disabled = %v, want undimmed", got)
+	}
+	tr, s = toolRowDrawn(t, nil, nil, true)
+	if got := cellStyle(s, tr.More); got != dim {
+		t.Errorf("More with moreDim = %v, want dimmed", got)
+	}
+}
+
+// TestToolRowDrawNeedsOneRow: a rect that is not one row high paints nothing.
+func TestToolRowDrawNeedsOneRow(t *testing.T) {
+	tr := newTestToolRow("A")
+	s := tuikittest.NewScreen(10, 2)
+	tr.Draw(s, core.Rect{X: 0, Y: 0, W: 10, H: 2}, nil, false)
+	if got := s.StyleAt(0, 0); got != tcell.StyleDefault {
+		t.Errorf("style at 0,0 = %v, want untouched", got)
 	}
 }

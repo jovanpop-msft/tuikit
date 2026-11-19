@@ -66,6 +66,8 @@ tuikit/
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
 │               Cut/Copy/Paste/Select All right-click menu),
+│               choice_items.go (ChoiceItems: a pick-one selector's menu,
+│               the value in force marked with ChoiceMark),
 │               menu_box.go (one box per menu level, root and submenus:
 │               draw, scroll, hit-test, keys for both hosts),
 │               toolbar.go, tool_row.go (a panel's text toolbar: layout,
@@ -94,7 +96,8 @@ tuikit/
 │               scales, ticks, formatting), glyph.go (eighth-block ramps),
 │               axis.go, legend.go, common.go (Series, stacked-run composition),
 │               history.go, stacked_history.go, barchart.go, stacked_bar.go,
-│               vbar.go, kpi.go, panel_title.go (a chart panel's heading row)
+│               vbar.go, kpi.go, panel_title.go (a chart panel's heading row),
+│               readout.go (the box a click on a chart pins: size, placement, draw)
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
 │               mockscreen.go (NewMockScreen: tcell's own screen on a mock
