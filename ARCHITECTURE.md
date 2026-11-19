@@ -34,6 +34,12 @@ or owns a timer:
   An async `FileSystem` was deliberately not built: it turns Tab completion
   and the overwrite check into callback chains for a wait the indicator
   explains.
+- `clipboard.Write`/`Read` block on a shell-out or the Win32 clipboard lock
+  (bounded, about two seconds) and start no goroutine: the host runs them on
+  its own and posts the result back. The OSC 52 fallback (tcell's
+  `SetClipboard`/`GetClipboard`) writes to the terminal, so it belongs on the
+  UI goroutine, and a host with several copies in flight orders them itself
+  (newest wins) — the package keeps no such state.
 
 ## Mouse gestures
 
@@ -95,7 +101,9 @@ Two consequences:
 
 - A host with an early `return` in `HandleMouse` forwards `ButtonNone` to its
   latch-bearing children first, or a drag ending outside leaves a child
-  latched and swallowing its next press.
+  latched and swallowing its next press. A dialog driving a flat focus ring
+  forwards it to its focused text field with
+  `dialogs.ForwardReleaseToFocusedField`.
 - A host that opens a dialog from a press (a context-menu item) drops the
   held `Button1` when its modal layer changes mid-gesture; otherwise
   twitching before release fires whatever dialog button is under the pointer.
@@ -115,7 +123,10 @@ header. A press that acted or did nothing still arms a zone whose route does
 nothing, so a drag from it never reaches a cell as a fresh press. Scrollbars
 use `core.OnScrollbar`/`OnScrollbarH` for the press and
 `ScrollOffsetForDrag` for every event; `HandleScrollbarDrag` stays for
-widgets with a single bool latch.
+widgets with a single bool latch. A view onto a canvas scrolled in both axes
+uses `core.Viewport`, whose `HandleScrollbars` latches one bar on the press
+and gives it every later `Button1` until `Release`, so a drag crossing the
+other bar stays on its own.
 
 A selection drag (DataGrid cells and row header, Editor text, both wrap
 modes) that leaves the content clamps the pointer to the row or column just

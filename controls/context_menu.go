@@ -26,6 +26,12 @@ type ContextMenu struct {
 	// while held, so without the latch a press that twitches over a leaf item would
 	// fire its Action repeatedly.
 	press core.PressLatch
+
+	// refresh rebuilds the items after a KeepOpen item acts (SetRefresh); shows
+	// counts Show calls, so an action that re-shows a menu of its own is not
+	// then overwritten by the refresh of the one it replaced.
+	refresh func() []MenuItem
+	shows   int
 }
 
 // contextMenuMinW is a context menu's (and every submenu's) narrowest box.
@@ -39,13 +45,45 @@ func (cm *ContextMenu) Show(x, y int, items []MenuItem) {
 	root.rect = core.Rect{X: x, Y: y, W: root.liveWidth(contextMenuMinW), H: len(items) + 2}
 	cm.visible = true
 	cm.press.Clear()
+	cm.refresh = nil
+	cm.shows++
+}
+
+// SetRefresh gives the menu just shown a way to rebuild its items: after a
+// KeepOpen item's action runs, the menu replaces its items with build()'s and
+// redraws in place, the highlight and scroll kept — so a checklist's ☑/☐
+// follows each tick without the host re-showing it. Show clears it; call it
+// after Show.
+func (cm *ContextMenu) SetRefresh(build func() []MenuItem) { cm.refresh = build }
+
+// keep runs a KeepOpen item's action, then rebuilds the items from refresh
+// unless the action closed the menu or showed another.
+func (cm *ContextMenu) keep(run func()) {
+	shows := cm.shows
+	if run != nil {
+		run()
+	}
+	if !cm.visible || cm.shows != shows || cm.refresh == nil {
+		return
+	}
+	items := cm.refresh()
+	root := cm.menu.root()
+	root.items = items
+	if root.hover >= len(items) || (root.hover >= 0 && menuItemSkippable(items[root.hover])) {
+		root.hover = -1
+	}
+	// Seeded as Show does, for a menu driven without a draw; DrawOverlay
+	// re-places it.
+	root.rect.W = root.liveWidth(contextMenuMinW)
+	root.rect.H = len(items) + 2
+	cm.menu.sync()
 }
 
 // SetHover puts the keyboard cursor on item i, for a caller that rebuilds and
-// re-shows its own menu in place — a checklist whose rows carry a ☑/☐ the
-// toggle has to redraw. Show resets the hover to nothing, so without this every
-// tick would send the cursor back above the first row and the next Down key
-// would start the list again. Out-of-range and unselectable indexes are
+// re-shows its own menu in place. Show resets the hover to nothing, so without
+// this every re-show would send the cursor back above the first row and the
+// next Down key would start the list again. A checklist needs neither: its
+// rows are KeepOpen (CheckItems) and SetRefresh redraws them in place. Out-of-range and unselectable indexes are
 // ignored, leaving the hover where Show left it.
 func (cm *ContextMenu) SetHover(i int) {
 	items := cm.Items()
@@ -111,6 +149,8 @@ func (cm *ContextMenu) HandleKey(ev *tcell.EventKey) bool {
 		if run != nil {
 			run()
 		}
+	case menuKeyKeep:
+		cm.keep(run)
 	}
 	return true
 }
@@ -138,11 +178,14 @@ func (cm *ContextMenu) HandleMouse(ev *tcell.EventMouse) bool {
 		}
 		return consumed
 	}
-	if dismiss, run := cm.menu.handleMouse(ev, level, item, cm.press.Fresh(ev)); dismiss {
+	switch dismiss, run := cm.menu.handleMouse(ev, level, item, cm.press.Fresh(ev)); {
+	case dismiss:
 		cm.Hide()
 		if run != nil {
 			run()
 		}
+	case run != nil:
+		cm.keep(run)
 	}
 	return true
 }

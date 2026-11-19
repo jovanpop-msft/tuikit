@@ -49,6 +49,17 @@ func StyleScrollThumb() tcell.Style {
 	return On(active.BorderActive, active.BorderActive)
 }
 
+// StyleTitleActive is the focused panel's title bar and the active tab of a
+// tab bar: StyleActiveBlock, bold.
+func StyleTitleActive() tcell.Style {
+	return StyleActiveBlock().Bold(true)
+}
+
+// StyleTitleInactive is an unfocused panel's title bar: the MenuBar ground.
+func StyleTitleInactive() tcell.Style {
+	return StyleMenuBar()
+}
+
 func StyleDisabled() tcell.Style {
 	return On(active.MenuBar, active.TextDisabled)
 }

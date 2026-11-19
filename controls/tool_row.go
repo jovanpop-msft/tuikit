@@ -3,7 +3,9 @@ package controls
 import (
 	"strings"
 
+	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
+	"github.com/radix29/tuikit/theme"
 )
 
 // ToolRowGap is the blank column between two ToolRow cells; a cell's label is
@@ -12,9 +14,9 @@ const ToolRowGap = 1
 
 // ToolCell is one clickable cell of a ToolRow.
 //
-// Selected, Disabled and Reason are for the host's drawing and gating: the row
-// neither draws nor enforces them. A host that dims a cell still refuses the click
-// itself, since a dimmed control that acts on a click is the failure the
+// Selected and Disabled are what Draw paints (Disabled unless the host passes its
+// own predicate); the row never enforces them outside Run. A host that dims a cell
+// still refuses the click through Run, since a dimmed control that acts on a click is the failure the
 // context-gating rule exists to prevent. A host whose gate is a predicate asked
 // per draw and per click (one that depends on a probe not yet run when the row was
 // built) leaves them unset.
@@ -37,13 +39,12 @@ type ToolCell struct {
 	Rect core.Rect
 }
 
-// ToolRow is the geometry of a panel's one-row text toolbar: layout,
-// hit-testing, the "More ▾" overflow and Run, the gate every path that acts on a
-// cell goes through. It does not draw — what a cell does, when it is dimmed and
-// how it looks stay with the host, because the hosts
-// disagree on all of it (one dims per cell and draws the active rate
-// selected, one dims the whole row while a read is in flight, one asks a
-// predicate per cell). Toolbar is the other kind: an application's icon strip.
+// ToolRow is a panel's one-row text toolbar: layout, hit-testing, the "More ▾"
+// overflow, Run (the gate every path that acts on a cell goes through) and Draw.
+// What a cell does and when it is dimmed stay with the host, because the hosts
+// disagree on it (one dims per cell from its Disabled field, one dims the whole
+// row while a read is in flight, one asks a predicate per cell); Draw takes both
+// as arguments. Toolbar is the other kind: an application's icon strip.
 type ToolRow struct {
 	Cells []ToolCell
 
@@ -172,7 +173,7 @@ func (tr *ToolRow) OverflowItems(disabled func(int) bool, reason func(int) strin
 	for _, i := range tr.Hidden {
 		label := tr.Cells[i].Label
 		if tr.Cells[i].Selected {
-			label = "• " + label
+			label = ChoiceMark + label
 		}
 		// Note is fixed when the menu is built, while Enabled is asked on every draw.
 		// Ask reason only for a cell withheld right now: a reason function may answer
@@ -220,6 +221,56 @@ func (tr *ToolRow) Run(i int, disabled func(int) bool, reason func(int) string, 
 	if a := tr.Cells[i].Action; a != nil {
 		a()
 	}
+}
+
+// Draw paints the row Layout placed in r: the bar in the menu-bar style, every
+// shown cell in the tooltip scheme — dimmed when disabled, else in the selected
+// look when Selected — then More, dimmed when moreDim. disabled nil reads each
+// cell's Disabled field, as Run and OverflowItems do; pass the same predicate as
+// to Run, so a cell that looks inert is. A host draws whatever else shares the
+// row (a prefix, a status, a filter field) after Draw, into the columns Layout
+// left free. A rect that is not one row high draws nothing.
+//
+// Disabled wins over Selected: a selected cell the host refuses is drawn dimmed,
+// not as the one in force. Selected is painted at all because a row that marks a
+// choice (a refresh rate, Fit) and never shows it hides state the More menu's
+// bullet would reveal only once the cell has overflowed.
+func (tr *ToolRow) Draw(s tcell.Screen, r core.Rect, disabled func(int) bool, moreDim bool) {
+	if r.H != 1 {
+		return
+	}
+	if disabled == nil {
+		disabled = func(i int) bool { return tr.Cells[i].Disabled }
+	}
+	dim := theme.StyleTooltip().Foreground(theme.Active().TextDim)
+	core.FillRect(s, r, ' ', theme.StyleMenuBar())
+	for i, c := range tr.Cells {
+		if c.Rect.IsZero() {
+			continue
+		}
+		style := theme.StyleTooltip()
+		switch {
+		case disabled(i):
+			style = dim
+		case c.Selected:
+			style = theme.StyleMenuSelected().Bold(true)
+		}
+		drawToolCell(s, c, style)
+	}
+	if !tr.More.Rect.IsZero() {
+		style := theme.StyleTooltip()
+		if moreDim {
+			style = dim
+		}
+		drawToolCell(s, tr.More, style)
+	}
+}
+
+// drawToolCell paints one cell: its rect filled, the label after one space of
+// padding.
+func drawToolCell(s tcell.Screen, c ToolCell, style tcell.Style) {
+	core.FillRect(s, c.Rect, ' ', style)
+	core.DrawText(s, c.Rect.X+1, c.Rect.Y, style, c.Label)
 }
 
 // runLabel is a cell's label as Run's refusal names it: without the trailing

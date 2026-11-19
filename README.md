@@ -33,6 +33,10 @@ tuikit/
 ├── theme/      Colour palette + derived tcell.Style helpers — palette.go, styles.go
 ├── core/       Rect geometry, drawing primitives, string/int helpers
 │             — geometry.go, screen.go, drawing.go, strutil.go, mathutil.go,
+│               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
+│               both scrollbars and their drag latches),
+│               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
+│               under a line's second column),
 │               runecol.go (rune index ↔ display column), wordutil.go (word
 │               boundaries for Editor and InputField), clip_screen.go
 │               (ClipScreen: a tcell.Screen that drops writes outside a clip
@@ -49,27 +53,45 @@ tuikit/
 │               tcell.Screen's drawing half — charts render into it and blit,
 │               tests draw into it and read it back),
 │               tabstrip.go (TabStripSegments/TabLabelWidth: the one tab-bar
-│               column layout, shared by draw and hit-test code)
+│               column layout, shared by draw and hit-test code),
+│               keys.go (NormalizeKey: the Ctrl+letter fold), mouse.go
+│               (MouseEventName: "Shift+Button1", tcell's missing
+│               EventMouse.Name)
 ├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each
 ├── layout/     Panel interface, PanelManager (tabs), Splitter — panel.go,
-│               panel_manager.go, splitter.go
+│               panel_manager.go, splitter.go, title_bar.go (DrawTitleBar:
+│               a panel's one-row title, active/inactive, optional
+│               right-aligned cell)
 ├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Confirm/TypedConfirm
-│             (retype-to-confirm)/Prompt (one-line input)/Progress/FileDialog
+│             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
+│             row, then a button)/Log (read-only newest-first log in a
+│             selectable Editor; Record from any goroutine)/Text (scrollable
+│             reference text, hanging-indent wrap)/FileDialog
 │             — FileDialog (every file-path prompt) is file_dialog.go (state),
 │               _draw, _input, _complete (path completion), and file_system.go:
 │               the FileSystem it browses (LocalFileSystem by default; Windows/
 │               Posix path rules for a remote one — see ShowOpenOn/ShowSaveOn,
 │               and BlockingFileSystem for the "Listing ..." repaint);
 │               field_gesture.go (FieldGesture: a dialog's drag latch for a
-│               gesture begun in one of its controls)
-├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TreeView, DataGrid, ListBox
+│               gesture begun in one of its controls), focus_ring.go
+│               (SetFocusIn, NextFocus, ButtonRowKey, ClipboardFieldAt,
+│               ForwardReleaseToFocusedField …: the operations over a host
+│               dialog's flat []core.Focusable ring)
+├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
 │               Cut/Copy/Paste/Select All right-click menu),
+│               choice_items.go (ChoiceItems: a pick-one selector's menu,
+│               the value in force marked with ChoiceMark),
+│               check_items.go (CheckItems: a pick-many checklist's
+│               KeepOpen rows, ticked with CheckMark; ContextMenu.SetRefresh
+│               redraws them in place),
 │               menu_box.go (one box per menu level, root and submenus:
 │               draw, scroll, hit-test, keys for both hosts),
 │               toolbar.go, tool_row.go (a panel's text toolbar: layout,
-│               hit-test, "More ▾"; drawn by the host), treeview.go (with an
+│               hit-test, "More ▾"; drawn by the host), tab_bar.go (TabBar:
+│               a one-row strip of plain tabs plus an optional right-aligned
+│               cell, draw and hit-test over TabStripSegments), treeview.go (with an
 │               optional top-border action, SetTitleButton), listbox.go;
 │               DataGrid: datagrid.go (state/source/widths), _draw, _input,
 │               _overlay (right-click menu, "Show Value");
@@ -78,8 +100,11 @@ tuikit/
 │   └── editor/ Editor — document.go (the one text-mutation chokepoint; its
 │               version counter keys the syntax/wrap/width caches),
 │               line_buffer.go (builds a document off the UI goroutine for an
-│               O(1) SetLineBuffer), editor.go (state/options), editor_undo.go
-│               (span deltas, capped by steps and bytes), editor_search.go (the
+│               O(1) SetLineBuffer), log_feed.go (LogFeed: a newest-first
+│               capped log for a read-only Editor, synced by PrependLines so
+│               the reader keeps their selection), editor.go (state/options),
+│               editor_undo.go (span deltas, capped by steps and bytes),
+│               editor_search.go (the
 │               one regexp engine for Find/Replace/Replace All), editor_block.go
 │               (column selection + rectangular clipboard), editor_selection.go,
 │               _draw, _wrap, _input, _actions, editor_completion.go (popup;
@@ -94,7 +119,15 @@ tuikit/
 │               scales, ticks, formatting), glyph.go (eighth-block ramps),
 │               axis.go, legend.go, common.go (Series, stacked-run composition),
 │               history.go, stacked_history.go, barchart.go, stacked_bar.go,
-│               vbar.go, kpi.go, panel_title.go (a chart panel's heading row)
+│               vbar.go, kpi.go, panel_title.go (a chart panel's heading row),
+│               readout.go (the box a click on a chart pins: size, placement, draw)
+├── clipboard/  The system clipboard behind a host's Copy/Paste — native.go
+│               (Write/Read through pbcopy, wl-copy, xclip or xsel),
+│               native_windows.go (the Win32 CF_UNICODETEXT path; tuikit's one
+│               GOOS-suffixed file), terminal.go (TerminalLikely: did an OSC 52
+│               write probably land), paste.go (PasteBuffer: a bracketed
+│               paste's keys as one text; StripBOMs). Synchronous: the host
+│               calls Write/Read off its UI goroutine
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
 │               mockscreen.go (NewMockScreen: tcell's own screen on a mock
@@ -103,7 +136,10 @@ tuikit/
 │             — doc.go, common.go, rows.go (Section/Note/Hint/Static),
 │               textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
 │               gridrow.go, editorrow.go, togglegrid.go, listeditor.go
-│               (ListEditor: grid + detail rows + Add/Remove), form.go; sheet.go
+│               (ListEditor: grid + detail rows + Add/Remove), celltoggle.go
+│               (BindCellToggle/NewCellToggleGrid: activate a cell to change
+│               its row), staticblock.go (StaticBlock: detail rows filled
+│               from a selection, cleared as one), form.go; sheet.go
 │               (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
 └── examples/   Runnable programs, not library packages (nothing imports them)
     └── spindemo/  every widgets.Spinner animated side by side, for picking
@@ -123,8 +159,9 @@ charts           —
 controls/editor  —
 controls         → controls/editor
 layout           —
-dialogs          → widgets
+dialogs          → widgets, controls/editor
 propsheet        → dialogs, controls, controls/editor, widgets
+clipboard        imports no tuikit package, not even core/theme (tcell only)
 examples/*       → whatever they demonstrate; nothing imports them
 ```
 
@@ -132,9 +169,13 @@ examples/*       → whatever they demonstrate; nothing imports them
   geometry from `core.TabStripSegments`, as every other tab bar built on
   tuikit does; nothing in tuikit imports `layout`.
 - **controls/editor** is a leaf too: `controls` reaches it only through
-  `ValueViewer` (DataGrid's "Show Value"), which embeds an `Editor`.
+  `ValueViewer` (DataGrid's "Show Value"), and `dialogs` only through
+  `LogDialog`, each of which embeds an `Editor`.
 - **propsheet** is the top, composing `dialogs.ModalDialog`,
   `controls.DataGrid`/`ListBox`, `editor.Editor` (EditorRow) and `widgets`.
+- **clipboard** is outside the widget graph: no widget calls it. A widget
+  hands text over through `core.ClipboardTarget`; the host moves it to and
+  from the system clipboard with this package.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`

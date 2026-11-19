@@ -183,6 +183,10 @@ func (mb *MenuBar) HandleKey(ev *tcell.EventKey) bool {
 		if run != nil {
 			run()
 		}
+	case menuKeyKeep:
+		if run != nil {
+			run() // the host's SetMenus, if any, keeps the highlight
+		}
 	case menuKeyUnhandled:
 		// Left and Right on the dropdown itself (Right only when the item has no
 		// submenu to open) move between headers.
@@ -262,11 +266,12 @@ func (mb *MenuBar) HandleMouse(ev *tcell.EventMouse) bool {
 			}
 			return consumed || ev.Buttons() == tcell.ButtonNone
 		}
-		if dismiss, run := mb.menu.handleMouse(ev, level, item, mb.press.Fresh(ev)); dismiss {
+		dismiss, run := mb.menu.handleMouse(ev, level, item, mb.press.Fresh(ev))
+		if dismiss {
 			mb.Close()
-			if run != nil {
-				run()
-			}
+		}
+		if run != nil {
+			run()
 		}
 		return true
 	}

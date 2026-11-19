@@ -1,6 +1,7 @@
 // Package dialogs provides the ModalDialog base type and generic re-usable dialog
 // implementations (AlertDialog, ConfirmDialog, TypedConfirmDialog, PromptDialog,
-// ProgressDialog, PropertiesDialog, FileDialog).
+// ProgressDialog, PropertiesDialog, ListDialog, LogDialog, TextDialog,
+// FileDialog).
 //
 // Every dialog embeds ModalDialog which:
 //   - Fades the underlying UI in place (keeping it visible) before its own box
@@ -24,6 +25,9 @@
 //   - confirm_dialog.go     — ConfirmDialog (two-button yes/no)
 //   - typed_confirm_dialog.go — TypedConfirmDialog (retype-to-confirm)
 //   - progress_dialog.go    — ProgressDialog (spinner, elapsed time, Cancel)
+//   - list_dialog.go        — ListDialog (pick a row of a live list, then a button)
+//   - log_dialog.go         — LogDialog (read-only newest-first log, selectable)
+//   - text_dialog.go        — TextDialog (scrollable reference text, hanging wrap)
 //   - file_dialog.go        — FileDialog (Open/Save file picker); split across
 //     file_dialog_draw.go (rendering), file_dialog_input.go (key/mouse handling)
 //     and file_dialog_complete.go (path completion)

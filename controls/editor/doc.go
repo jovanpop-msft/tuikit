@@ -10,6 +10,8 @@
 //   - Document — the buffer, the one text-mutation chokepoint; its version
 //     counter keys the syntax/wrap/width caches (document.go)
 //   - LineBuffer — builds a Document off the UI goroutine (line_buffer.go)
+//   - LogFeed — a newest-first capped log synced into a read-only Editor with
+//     PrependLines, so updates keep the reader's selection (log_feed.go)
 //   - XMLHighlighter, JSONHighlighter — the built-in, language-neutral
 //     highlighters (xml_highlighter.go, json_highlighter.go)
 //
