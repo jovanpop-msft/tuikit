@@ -66,7 +66,10 @@ tuikit/
 │             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
 │             row, then a button)/Log (read-only newest-first log in a
 │             selectable Editor; Record from any goroutine)/Text (scrollable
-│             reference text, hanging-indent wrap)/FileDialog
+│             reference text, hanging-indent wrap)/FindReplace (Find and
+│             Replace over an editor.Editor's search; MatchStatus, the
+│             readout a host's F3 shares)/KeyDiagnostics (a Log of the
+│             key and mouse events tcell decodes)/FileDialog
 │             — FileDialog (every file-path prompt) is file_dialog.go (state),
 │               _draw, _input, _complete (path completion), and file_system.go:
 │               the FileSystem it browses (LocalFileSystem by default; Windows/
@@ -94,7 +97,8 @@ tuikit/
 │               cell, draw and hit-test over TabStripSegments), treeview.go (with an
 │               optional top-border action, SetTitleButton), listbox.go;
 │               DataGrid: datagrid.go (state/source/widths), _draw, _input,
-│               _overlay (right-click menu, "Show Value");
+│               _overlay (right-click menu, "Show Value"), _sort (a host's
+│               column sort: PermutedSource, SetSourceReordered, SortMenuItems);
 │               value_viewer.go (ValueViewer: the modal read-only popup
 │               "Show Value" opens; a host can hold its own)
 │   └── editor/ Editor — document.go (the one text-mutation chokepoint; its
@@ -135,8 +139,9 @@ tuikit/
 ├── propsheet/  PropertySheet — multi-page editable properties dialog framework
 │             — doc.go, common.go, rows.go (Section/Note/Hint/Static),
 │               textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
-│               gridrow.go, editorrow.go, togglegrid.go, listeditor.go
-│               (ListEditor: grid + detail rows + Add/Remove), celltoggle.go
+│               gridrow.go, editorrow.go, togglegrid.go, griddetail.go
+│               (BindGridDetail: detail rows following a grid's selection),
+│               listeditor.go (ListEditor: BindGridDetail + Add/Remove), celltoggle.go
 │               (BindCellToggle/NewCellToggleGrid: activate a cell to change
 │               its row), staticblock.go (StaticBlock: detail rows filled
 │               from a selection, cleared as one), form.go; sheet.go
@@ -235,7 +240,10 @@ host's rebuild) or marked rows (`RowMarked`, bookmarks), and `NullSource`
 (`IsNull(row, col)`) to mark SQL NULL cells, which draw dimmed and skip
 `OnShowValue`. The grid never reads NULL from the text: a cell reading "NULL"
 may be the string. goSSMS's query result set is a `RowSource` and a
-`NullSource`, streamed in as rows arrive.
+`NullSource`, streamed in as rows arrive. A host's column sort (the grid draws
+the arrow and reports the header click, never sorts) shows its order through
+`PermutedSource` and swaps it in with `SetSourceReordered`, which keeps the
+cursor on its row, not its index.
 
 **Display width, not bytes or runes.** `core.DisplayWidth(s)` (via
 `clipperhouse/displaywidth`) is the one answer to "how many columns", handling

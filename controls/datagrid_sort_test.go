@@ -101,3 +101,99 @@ func TestDataGridSortIndicator(t *testing.T) {
 		t.Errorf("header = %q after SetData, want no arrow", h)
 	}
 }
+
+// permTestRows is a NullSource and RowKindSource over rows: null names the cells
+// holding NULL, marked the marked rows, by their index in rows.
+type permTestRows struct {
+	rows   [][]string
+	null   map[[2]int]bool
+	marked map[int]bool
+}
+
+func (s permTestRows) Len() int                 { return len(s.rows) }
+func (s permTestRows) Row(i int) []string       { return s.rows[i] }
+func (s permTestRows) IsNull(row, col int) bool { return s.null[[2]int{row, col}] }
+func (s permTestRows) RowKind(i int) RowKind {
+	if s.marked[i] {
+		return RowMarked
+	}
+	return RowNormal
+}
+
+// PermutedSource reads each shown row, its NULLs and its kind from the
+// underlying row Perm names, not from the shown index.
+func TestPermutedSourcePassesCapabilitiesThrough(t *testing.T) {
+	src := permTestRows{
+		rows:   [][]string{{"a"}, {"NULL"}, {"c"}},
+		null:   map[[2]int]bool{{1, 0}: true},
+		marked: map[int]bool{2: true},
+	}
+	p := PermutedSource{Src: src, Perm: []int{2, 1, 0}}
+	if p.Len() != 3 || p.Row(0)[0] != "c" || p.Row(2)[0] != "a" {
+		t.Fatalf("rows = %v %v %v, want c NULL a", p.Row(0), p.Row(1), p.Row(2))
+	}
+	if !p.IsNull(1, 0) || p.IsNull(0, 0) {
+		t.Errorf("IsNull(1,0)=%v IsNull(0,0)=%v, want true false", p.IsNull(1, 0), p.IsNull(0, 0))
+	}
+	if p.RowKind(0) != RowMarked || p.RowKind(2) != RowNormal {
+		t.Errorf("RowKind(0)=%v RowKind(2)=%v, want marked normal", p.RowKind(0), p.RowKind(2))
+	}
+	// A source with neither capability has no NULLs and only normal rows.
+	plain := PermutedSource{Src: SliceRowSource{{"x"}}, Perm: []int{0}}
+	if plain.IsNull(0, 0) || plain.RowKind(0) != RowNormal {
+		t.Error("a plain source's permuted view reports a NULL or a marked row")
+	}
+}
+
+// SetSourceReordered keeps the cursor on the row it was on, through the old
+// order and into the new, keeps its column, and keeps the indicator; a row
+// missing from the new order leaves the cursor on its index.
+func TestSetSourceReorderedFollowsTheRow(t *testing.T) {
+	base := SliceRowSource{{"a", "1"}, {"b", "2"}, {"c", "3"}, {"d", "4"}}
+	g := newTestDataGrid()
+	g.SetCellCursor(true)
+	g.SetSource([]string{"N", "V"}, base)
+	g.SetSelectedCell(1, 1) // "b", unsorted
+
+	desc := []int{3, 2, 1, 0}
+	g.SetSourceReordered([]string{"N", "V"}, PermutedSource{Src: base, Perm: desc}, nil, desc)
+	g.SetSortIndicator(0, true)
+	if row, col := g.SelectedCell(); row != 2 || col != 1 {
+		t.Fatalf("cursor = (%d,%d) after the first sort, want (2,1) on b", row, col)
+	}
+
+	asc := []int{0, 1, 2, 3}
+	g.SetSourceReordered([]string{"N", "V"}, PermutedSource{Src: base, Perm: asc}, desc, asc)
+	if row, _ := g.SelectedCell(); row != 1 {
+		t.Fatalf("cursor row = %d after reversing, want 1 on b", row)
+	}
+	if col, d := g.SortIndicator(); col != 0 || !d {
+		t.Errorf("indicator = (%d,%v), want the old one kept until the host sets it", col, d)
+	}
+
+	// The cursor's row gone from the new order: the cursor stays on its index.
+	g.SetSelectedCell(3, 0)
+	short := []int{0, 1, 2}
+	g.SetSourceReordered([]string{"N", "V"}, PermutedSource{Src: base, Perm: short}, asc, short)
+	if row, _ := g.SelectedCell(); row != 2 {
+		t.Errorf("cursor row = %d after its row left, want 2 (index 3 clamped)", row)
+	}
+}
+
+// SortMenuItems offers both directions, greys the one in force, and applies
+// the one picked.
+func TestSortMenuItems(t *testing.T) {
+	curDesc := false
+	var got []bool
+	items := SortMenuItems(func(desc bool) bool { return desc == curDesc }, func(desc bool) { got = append(got, desc) })
+	if len(items) != 2 || items[0].Label != Strings.SortAscending || items[1].Label != Strings.SortDescending {
+		t.Fatalf("items = %+v, want Sort Ascending, Sort Descending", items)
+	}
+	if items[0].Enabled() || !items[1].Enabled() {
+		t.Errorf("enabled = %v %v while ascending, want false true", items[0].Enabled(), items[1].Enabled())
+	}
+	items[1].Action()
+	if len(got) != 1 || !got[0] {
+		t.Errorf("sort calls = %v, want [true]", got)
+	}
+}

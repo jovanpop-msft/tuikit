@@ -7,7 +7,8 @@ package controls
 // dispatches on it. A grid reads Ready when created, Rows when a source
 // arrives and the menu entries when the menu opens; a ToolRow reads More on
 // every layout; ClipboardMenuItems reads Cut, Copy, Paste and SelectAll (and
-// their shortcuts) each time it builds a menu.
+// their shortcuts) each time it builds a menu, SortMenuItems SortAscending and
+// SortDescending.
 var Strings = struct {
 	Ready, Error                      string
 	Rows                              string // a grid's status once a source is set; %d is the row count
@@ -16,6 +17,7 @@ var Strings = struct {
 	// The shortcut column of ClipboardMenuItems' entries.
 	CutKey, CopyKey, PasteKey, SelectAllKey string
 	ShowValue                               string
+	SortAscending, SortDescending           string // SortMenuItems' entries
 	ViewerHint, ViewerClose                 string
 	More                                    string // ToolRow's cell for the cells it is too narrow to draw
 }{
@@ -34,6 +36,8 @@ var Strings = struct {
 	PasteKey:           "Ctrl+V",
 	SelectAllKey:       "Ctrl+A",
 	ShowValue:          "Show Value",
+	SortAscending:      "Sort Ascending",
+	SortDescending:     "Sort Descending",
 	ViewerHint:         "Esc or Close to dismiss — Shift+arrows to select, Ctrl+C to copy",
 	ViewerClose:        "Close",
 }

@@ -16,7 +16,9 @@
 //   - TreeView — collapsible/expandable tree with generic node data (treeview.go)
 //   - ListBox — scrollable single-column list of strings (listbox.go)
 //   - DataGrid — scrollable, column-aligned tabular data display, split across
-//     datagrid.go, datagrid_draw.go, datagrid_input.go and datagrid_overlay.go
+//     datagrid.go, datagrid_draw.go, datagrid_input.go and datagrid_overlay.go;
+//     a host's column sort shows its order through PermutedSource, swaps it in
+//     with SetSourceReordered and offers SortMenuItems (datagrid_sort.go)
 //   - ValueViewer — DataGrid's "Show Value" popup (value_viewer.go), a read-only
 //     editor.Editor in a box
 //

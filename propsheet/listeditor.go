@@ -67,10 +67,8 @@ type ListEditorSpec[E comparable] struct {
 // changing the items some other way.
 //
 // Moving the grid cursor commits the detail rows into the item left, shows the
-// item reached, and redraws the grid with the cursor kept
-// (DataGrid.SetDataPreservingView): SetData would put the cursor back on row 0,
-// GridRow would then report the arrow not handled, and Form would move focus out
-// of the grid, leaving only the first row reachable.
+// item reached, and redraws the grid with the cursor kept: BindGridDetail, which
+// documents why the redraw must not be SetData.
 type ListEditor[E comparable] struct {
 	spec    ListEditorSpec[E]
 	grid    *controls.DataGrid
@@ -94,10 +92,10 @@ func NewListEditor[E comparable](spec ListEditorSpec[E]) *ListEditor[E] {
 			}
 		}
 	}
-	l.grid.OnSelectRow = func(int) {
-		l.Commit()
-		l.sync()
-		l.Redraw()
+	reload := BindGridDetail(l.grid, spec.Headers, l.rows, l.Commit, l.sync)
+	moved := l.grid.OnSelectRow
+	l.grid.OnSelectRow = func(row int) {
+		moved(row)
 		l.changed()
 	}
 
@@ -110,8 +108,7 @@ func NewListEditor[E comparable](spec ListEditorSpec[E]) *ListEditor[E] {
 		if spec.Revert != nil {
 			spec.Revert()
 		}
-		l.Redraw()
-		l.sync()
+		reload()
 		l.changed()
 	}
 
@@ -121,7 +118,6 @@ func NewListEditor[E comparable](spec ListEditorSpec[E]) *ListEditor[E] {
 	}
 	l.name = Text(label, "", spec.NameWidth)
 	l.buttons = Buttons(widgets.NewButton("Add", l.add), widgets.NewButton("Remove", l.remove))
-	l.sync()
 	return l
 }
 
