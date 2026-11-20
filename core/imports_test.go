@@ -117,6 +117,7 @@ var tuikitLayers = map[string][]string{
 	"propsheet":       {"core", "theme", "widgets", "dialogs", "controls", "controls/editor"},
 	"tuikittest":      {"core"},
 	"clipboard":       {},
+	"loop":            {},
 	// examples/ are runnable programs, not library packages; nothing imports them.
 	"examples/spindemo": {"core", "theme", "widgets"},
 }

@@ -87,7 +87,9 @@ tuikit/
 │               ClipboardFieldAt,
 │               ForwardReleaseToFocusedField …: the operations over a host
 │               dialog's flat []core.Focusable ring; RingMouse is its whole
-│               HandleMouse, in the one order § Mouse gestures allows)
+│               HandleMouse, in the one order § Mouse gestures allows),
+│               field_ring.go (FieldRing: such a dialog's focus/button
+│               state and its Key/Mouse/clipboard wiring in one value)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
@@ -135,7 +137,8 @@ tuikit/
 │               section_bar.go (a dashboard section's title strip with
 │               right-aligned KPIs), plot_hit.go (PlotHit: map a click on a
 │               drawn plot back to a bucket and the value drawn there),
-│               readout.go (the box a click on a chart pins: size, placement, draw)
+│               readout.go (the box a click on a chart pins: size, placement,
+│               draw; DrawAxisCallout names its moment on the time axis)
 ├── clipboard/  The system clipboard behind a host's Copy/Paste — native.go
 │               (Write/Read through pbcopy, wl-copy, xclip or xsel),
 │               native_windows.go (the Win32 CF_UNICODETEXT path; tuikit's one
@@ -143,6 +146,13 @@ tuikit/
 │               write probably land), paste.go (PasteBuffer: a bracketed
 │               paste's keys as one text; StripBOMs). Synchronous: the host
 │               calls Write/Read off its UI goroutine
+├── loop/       The UI-goroutine side of async work — poster.go (Poster: Post a
+│               callback from any goroutine and wake the event loop through
+│               EventQ(); Drain at the top of every iteration; Close orders the
+│               screen's Fini against a wake in flight), latest.go (Latest:
+│               a latest-only load's token + cancel — Begin supersedes and
+│               cancels the run in flight, Done drops a stale result).
+│               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
 │               mockscreen.go (NewMockScreen: tcell's own screen on a mock
@@ -181,6 +191,7 @@ layout           —
 dialogs          → widgets, controls/editor
 propsheet        → dialogs, controls, controls/editor, widgets
 clipboard        imports no tuikit package, not even core/theme (tcell only)
+loop             imports no tuikit package, not even core/theme (tcell only)
 examples/*       → whatever they demonstrate; nothing imports them
 ```
 
@@ -195,6 +206,9 @@ examples/*       → whatever they demonstrate; nothing imports them
 - **clipboard** is outside the widget graph: no widget calls it. A widget
   hands text over through `core.ClipboardTarget`; the host moves it to and
   from the system clipboard with this package.
+- **loop** is outside the widget graph too: no widget posts or wakes. It is
+  host plumbing, here because § Threading dictates the protocol and every
+  tcell v3 host otherwise rewrites its bug-dense part.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`

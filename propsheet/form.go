@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/gdamore/tcell/v3"
+	"github.com/radix29/tuikit/controls"
 	"github.com/radix29/tuikit/core"
 	"github.com/radix29/tuikit/theme"
 )
@@ -127,6 +128,19 @@ func browsable(row Row) bool {
 // Rows returns the form's rows in order, for a caller that needs to find one
 // after the form is built.
 func (f *Form) Rows() []Row { return f.rows }
+
+// Grids returns the DataGrid of every GridHolder row, in row order: the way to
+// configure every grid of a form alike. A type switch on *GridRow misses a
+// ToggleGridRow, which embeds one.
+func (f *Form) Grids() []*controls.DataGrid {
+	var grids []*controls.DataGrid
+	for _, r := range f.rows {
+		if g, ok := r.(GridHolder); ok && g.DataGrid() != nil {
+			grids = append(grids, g.DataGrid())
+		}
+	}
+	return grids
+}
 
 // SetBounds positions the form's content area. The same rect again changes
 // nothing; a new one keeps the scroll inside the content and never moves focus.

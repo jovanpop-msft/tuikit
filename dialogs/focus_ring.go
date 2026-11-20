@@ -8,10 +8,10 @@ import (
 // focus_ring.go holds the operations over a hand-rolled dialog's focus ring:
 // a host dialog that lays out widgets itself and drives focus with a flat
 // []core.Focusable and an index, rather than delegating to propsheet.Form's
-// rows. Each dialog keeps its own state (the slice, the focused index, the
-// button-row focus, a list's selection and scroll); only the operations live
-// here. Embedded structs owning the fields would rename every direct
-// `d.focusable[d.focusIdx]` access for no behavioural gain.
+// rows. A dialog whose whole surface is that ring holds a FieldRing
+// (field_ring.go), which owns the state and wires these together; one with
+// tabs, a scrollable pane or a mode keeps its own state and calls them
+// piecemeal.
 //
 // They pair with what ModalDialog already draws: DrawButtonsGated paints a
 // button row with some buttons disabled, ButtonRowKey is its keyboard (and

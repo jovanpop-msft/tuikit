@@ -16,6 +16,16 @@ screen's `EventQ()` channel — there is no `PostEvent`/`PollEvent` — and must
 send that wakeup from the background goroutine itself, not from inside the
 callback it posted: a wakeup queued inside a callback that runs only after a
 wakeup never fires, and the result sits until an unrelated keypress.
+`loop.Poster` is that protocol written once — post from any goroutine, one
+coalesced non-blocking wakeup per burst, a drain at the top of every loop
+iteration, and a close that orders `Fini()` against a wake in flight; a host
+uses it rather than hand-rolling the queue (`loop/poster_test.go` holds the
+races each rule answers).
+A load that a newer one supersedes (a preview following the selection, a
+tree node's children, search-as-you-type) goes through `loop.Latest`: its
+token drops the superseded result *and* its cancel stops the superseded run,
+so it releases its connection now rather than at its timeout — every copy
+that shipped with only the token was a bug (`loop/latest_test.go`).
 
 **Async state is data, not goroutines.** No tuikit control spawns a goroutine
 or owns a timer:
@@ -177,8 +187,10 @@ keyboard. It fixes the order — `TrackPress`; on release the latch-bearing
 members and `Release`; an open drop-down's first refusal; `ConsumeOutsideClick`;
 `ForwardReleaseToFocusedField`; `Replay`; buttons; `Claim` on a drag-starting
 member; the rest — which five hand-rolled copies had in five variants.
-`TestRingMouse` has one subtest per step. A dialog with tabs, a scrollable
-pane or a mode keeps its own `HandleMouse`.
+`TestRingMouse` has one subtest per step. `dialogs.FieldRing` bundles the
+three with the state they share (focused stop, button focus, the gesture), so
+such a dialog forwards to it rather than wiring them. A dialog with tabs, a
+scrollable pane or a mode keeps its own `HandleMouse`.
 
 ### Not every mouse event draws
 

@@ -2,6 +2,7 @@ package propsheet
 
 import (
 	"github.com/gdamore/tcell/v3"
+	"github.com/radix29/tuikit/controls"
 	"github.com/radix29/tuikit/core"
 )
 
@@ -100,6 +101,14 @@ type ReadOnlyDrawer interface {
 // Cut and Paste), so the form still can't become dirty.
 type Browsable interface {
 	Browsable() bool
+}
+
+// GridHolder is implemented by a row that shows a controls.DataGrid: GridRow,
+// and through it every row embedding a *GridRow (ToggleGridRow, a ListEditor's
+// row, a host's own). Form.Grids collects them, for a host configuring every
+// grid of a form alike (SetAutoAlign, ...).
+type GridHolder interface {
+	DataGrid() *controls.DataGrid
 }
 
 // Revealer is implemented by a row that can ask, from a handler, to be scrolled

@@ -54,16 +54,9 @@ type FindReplaceDialog struct {
 	// Next reported no matches with the new selection on screen.
 	rescope bool
 
-	// drag is the text-selection gesture a click in one of the dialog's text fields
-	// starts; see FieldGesture for the ordering its three calls need.
-	drag FieldGesture
-
-	// focusIdx is the focused field, or len(fields()) for the button row, which
-	// is one Tab stop crossed with the arrows (RingStep, ButtonRowKey). btnFocus
-	// is the button the row would press: findBtnNext while focus is in the
-	// fields, so Enter from a field finds next.
-	focusIdx int
-	btnFocus int
+	// ring is the focus ring over fields() and buttons(): its default button
+	// is findBtnNext, so Enter from a field finds next.
+	ring FieldRing
 
 	// status is the readout under the fields: match position, replacement count, or
 	// a regexp compile error. statusErr picks the colour.
@@ -110,6 +103,13 @@ func NewFindReplaceDialog() *FindReplaceDialog {
 	// Find Next and Replace stay inside the selection too (editor's InSelection),
 	// not only Replace All.
 	d.cbSel = widgets.NewCheckBox(Strings.InSelectionOnly)
+	d.ring = FieldRing{
+		Fields:     d.fields,
+		Buttons:    d.buttons,
+		DefaultBtn: findBtnNext,
+		Press:      d.pressButton,
+		Dismiss:    d.Hide,
+	}
 	return d
 }
 
@@ -132,9 +132,6 @@ func (d *FindReplaceDialog) show(target *editor.Editor, replace bool) {
 	}
 	d.SetSize(d.width(), d.height())
 	d.status, d.statusErr = "", false
-	// A latch must not survive into the next showing: a dialog dismissed mid-drag
-	// would reopen still routing every click to that field.
-	d.drag.Clear()
 
 	// Seed from a single-line selection, as every other editor's Find does. A
 	// multi-line selection is left alone: that is what "in selection only" is for.
@@ -146,8 +143,7 @@ func (d *FindReplaceDialog) show(target *editor.Editor, replace bool) {
 	if cur, _ := d.target.MatchPosition(); replace && cur == 0 && d.target.HasSelection() {
 		d.rescope = true
 	}
-	d.focusIdx, d.btnFocus = 0, findBtnNext
-	d.syncFocus()
+	d.ring.Reset()
 	d.Show()
 }
 
@@ -226,27 +222,6 @@ func (d *FindReplaceDialog) fields() []core.Focusable {
 		return []core.Focusable{d.fFind, d.fReplace, d.cbCase, d.cbWord, d.cbRegex, d.cbSel}
 	}
 	return []core.Focusable{d.fFind, d.cbCase, d.cbWord, d.cbRegex}
-}
-
-// syncFocus applies focusIdx to the widgets. The button-row index means a
-// button is focused and no widget is.
-func (d *FindReplaceDialog) syncFocus() {
-	for i, f := range d.fields() {
-		f.Focus(i == d.focusIdx)
-	}
-}
-
-// onButtons reports whether the button row holds focus.
-func (d *FindReplaceDialog) onButtons() bool { return d.focusIdx == len(d.fields()) }
-
-// moveFocus steps the ring by dir. Leaving the button row resets it to Find
-// Next, the button Enter presses from a field.
-func (d *FindReplaceDialog) moveFocus(dir int) {
-	d.focusIdx = RingStep(d.fields(), d.focusIdx, dir)
-	if !d.onButtons() {
-		d.btnFocus = findBtnNext
-	}
-	d.syncFocus()
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +352,7 @@ func (d *FindReplaceDialog) Draw(s tcell.Screen) {
 	core.DrawTextClipped(s, inner.X+1, d.statusY, inner.W-2, st, d.status)
 
 	d.DrawSeparator(s)
-	d.DrawButtons(s, d.buttons(), d.btnFocus)
+	d.DrawButtons(s, d.buttons(), d.ring.BtnFocus)
 }
 
 // layout positions the fields for the current mode and records statusY for Draw,
@@ -412,8 +387,7 @@ func (d *FindReplaceDialog) layout() {
 // ---------------------------------------------------------------------------
 
 // HandleKey routes keyboard events: F3 / Shift+F3 step through matches without
-// closing the dialog, then the focus ring (FieldRingKey on a field,
-// ButtonRowKey on the button row). Escape closes the dialog but leaves the
+// closing the dialog, then the focus ring (FieldRing.Key). Escape closes the dialog but leaves the
 // search active on the editor, so the host's F3 keeps working.
 func (d *FindReplaceDialog) HandleKey(ev *tcell.EventKey) bool {
 	if !d.Visible() {
@@ -427,11 +401,7 @@ func (d *FindReplaceDialog) HandleKey(ev *tcell.EventKey) bool {
 		d.doFind(dir)
 		return true
 	}
-	press := func() { d.pressButton(d.btnFocus) }
-	if d.onButtons() {
-		return ButtonRowKey(ev, &d.btnFocus, len(d.buttons()), nil, press, d.Hide, d.moveFocus)
-	}
-	return FieldRingKey(ev, d.fields()[d.focusIdx], press, d.Hide, d.moveFocus)
+	return d.ring.Key(ev)
 }
 
 // pressButton runs the action of buttons()[i] for the current mode, by
@@ -460,46 +430,24 @@ func (d *FindReplaceDialog) pressButton(i int) {
 	}
 }
 
-// HandleMouse routes mouse events; ModalDialog blocks clicks outside the
-// dialog's bounds.
+// HandleMouse routes mouse events (FieldRing.Mouse); ModalDialog blocks clicks
+// outside the dialog's bounds.
 func (d *FindReplaceDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	if !d.Visible() {
 		return false
 	}
-	return RingMouse(ev, &d.ModalDialog, &d.drag, d.fields(), d.focusIdx, d.buttons(),
-		func(i int) {
-			d.focusIdx = i
-			d.syncFocus()
-		},
-		func(btn int) {
-			d.btnFocus = btn
-			d.pressButton(btn)
-		})
-}
-
-// focusWidget moves the Tab cursor onto w, so a clicked widget becomes the
-// keyboard-focused one.
-func (d *FindReplaceDialog) focusWidget(w core.Focusable) {
-	if i := IndexOfFocusable(d.fields(), w); i >= 0 {
-		d.focusIdx = i
-		d.syncFocus()
-	}
+	return d.ring.Mouse(ev, &d.ModalDialog)
 }
 
 // FocusClipboardTargetAt implements core.ClipboardFocuser: a right-click on the
 // Find or Replace field focuses it.
 func (d *FindReplaceDialog) FocusClipboardTargetAt(x, y int) bool {
-	i := ClipboardFieldAt(d.fields(), x, y)
-	if i < 0 {
-		return false
-	}
-	d.focusWidget(d.fields()[i])
-	return true
+	return d.ring.FocusClipboardTargetAt(x, y)
 }
 
 // FocusedClipboardTarget implements core.ClipboardHost: whichever of the Find
 // what / Replace with fields has focus, nil on the checkboxes. Without it
 // Ctrl+X cuts the *editor's* selection behind the dialog.
 func (d *FindReplaceDialog) FocusedClipboardTarget() core.ClipboardTarget {
-	return FocusedClipboardTarget(d.fields(), d.focusIdx)
+	return d.ring.FocusedClipboardTarget()
 }

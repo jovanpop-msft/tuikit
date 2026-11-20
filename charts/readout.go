@@ -78,3 +78,58 @@ func DrawReadout(s tcell.Screen, r core.Rect, caption string, rows []ReadoutRow)
 		core.DrawTextRight(s, x, y, textW, body, row.Value)
 	}
 }
+
+// DrawAxisCallout writes text — the pinned bucket's moment — on a chart's
+// time-axis row, centred under screen column x and kept within the row and
+// vp's View: the row's other labels are times too, so a clipped callout would
+// read as one of them. It returns the screen row used, or -1 when there is no
+// room, for PlaceReadout's keepOut.
+//
+// row is the time row in canvas cells (PlotHit.TimeRow) and canvas is the
+// buffer the chart was drawn on and blitted from through vp: the callout reads
+// it to clear every label it overlaps whole, or a tail survives as a bogus
+// number ("-0:20" + callout → "-0:211:34:44"). A host drawing straight to the
+// screen passes a Viewport with a zero offset and the screen as canvas.
+func DrawAxisCallout(s tcell.Screen, canvas *core.Buffer, vp *core.Viewport, row core.Rect, x int, text string) int {
+	if row.W <= 0 || row.H <= 0 || text == "" {
+		return -1
+	}
+	view := vp.View
+	rowX, y := vp.ToScreen(row.X, row.Y)
+	if y < view.Y || y >= view.Bottom() {
+		return -1
+	}
+	w := core.DisplayWidth(text)
+	left := max(rowX, view.X)
+	right := min(rowX+row.W, view.Right())
+	if right-left < w {
+		return -1
+	}
+	x = core.Clamp(x-w/2, left, right-w)
+
+	clearFrom, clearTo := axisLabelRun(canvas, vp, row, x, x+w)
+	core.FillRect(s, core.Rect{X: clearFrom, Y: y, W: clearTo - clearFrom, H: 1}, ' ', theme.StyleChartAxis())
+	core.DrawTextClipped(s, x, y, w, theme.StyleTooltip(), text)
+	return y
+}
+
+// axisLabelRun widens the screen span [from, to) on row to cover every label it
+// touches, stopping at blank columns and staying within the row and vp's View.
+func axisLabelRun(canvas *core.Buffer, vp *core.Viewport, row core.Rect, from, to int) (int, int) {
+	rowX, _ := vp.ToScreen(row.X, row.Y)
+	lo := max(max(rowX, vp.View.X), 0)
+	hi := min(rowX+row.W, vp.View.Right())
+
+	blank := func(x int) bool {
+		cx, _ := vp.ToCanvas(x, 0)
+		str, _, _ := canvas.Get(cx, row.Y)
+		return str == "" || str == " "
+	}
+	for from > lo && !blank(from-1) {
+		from--
+	}
+	for to < hi && !blank(to) {
+		to++
+	}
+	return from, to
+}

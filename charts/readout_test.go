@@ -103,3 +103,63 @@ func TestDrawReadoutClipsRowsThatDoNotFit(t *testing.T) {
 		}
 	}
 }
+
+// axisFixture is a 30×1 canvas holding a time row of age labels, shown through
+// a viewport at screen (2,5) scrolled 3 columns right.
+func axisFixture() (*core.Buffer, *core.Viewport, core.Rect) {
+	c := core.NewBuffer(30, 1)
+	core.DrawText(c, 0, 0, theme.StyleChartAxis(), "-0:40     -0:30     -0:20    0")
+	vp := &core.Viewport{X: 3, View: core.Rect{X: 2, Y: 5, W: 20, H: 1}, ContentW: 30, ContentH: 1}
+	return c, vp, core.Rect{X: 0, Y: 0, W: 30, H: 1}
+}
+
+func blitAxis(c *core.Buffer, vp *core.Viewport) *core.Buffer {
+	s := core.NewBuffer(24, 7)
+	c.Blit(s, core.Rect{X: vp.X, Y: vp.Y, W: vp.View.W, H: vp.View.H}, vp.View)
+	return s
+}
+
+func TestDrawAxisCalloutClearsOverlappedLabelsWhole(t *testing.T) {
+	c, vp, row := axisFixture()
+	s := blitAxis(c, vp)
+	// Screen column 12 is canvas 13: inside "-0:30" (canvas 10..14).
+	y := DrawAxisCallout(s, c, vp, row, 12, "1:34")
+	if y != 5 {
+		t.Fatalf("row = %d, want 5", y)
+	}
+	got := s.Row(5)[2:22]
+	// The view starts at canvas 3 ("-0:40" shows as "40"). Callout centred at
+	// screen 10..13 (canvas 11..14); the "-0:30" label it touches is cleared
+	// whole, not left as a "-" stub.
+	want := "40      1:34     -0:"
+	if got != want {
+		t.Errorf("row = %q, want %q", got, want)
+	}
+}
+
+func TestDrawAxisCalloutStaysInsideTheView(t *testing.T) {
+	c, vp, row := axisFixture()
+	s := blitAxis(c, vp)
+	if y := DrawAxisCallout(s, c, vp, row, 21, "12:00:05"); y != 5 {
+		t.Fatalf("row = %d, want 5", y)
+	}
+	if got := s.Row(5)[14:22]; got != "12:00:05" {
+		t.Errorf("right edge = %q, want the callout clamped flush to the view", got)
+	}
+}
+
+func TestDrawAxisCalloutNoRoom(t *testing.T) {
+	c, vp, row := axisFixture()
+	s := blitAxis(c, vp)
+	if y := DrawAxisCallout(s, c, vp, row, 10, strings.Repeat("9", 21)); y != -1 {
+		t.Errorf("wider than the view: row = %d, want -1", y)
+	}
+	vp.Y = 1 // the time row scrolled out of view
+	vp.ContentH = 2
+	if y := DrawAxisCallout(s, c, vp, row, 10, "1:34"); y != -1 {
+		t.Errorf("row off screen: got %d, want -1", y)
+	}
+	if y := DrawAxisCallout(s, c, vp, row, 10, ""); y != -1 {
+		t.Errorf("empty text: got %d, want -1", y)
+	}
+}
