@@ -1,6 +1,7 @@
-// Package loop is the UI-goroutine side of a tcell v3 host's async work: the
-// queue background goroutines hand results to the event loop through, and the
-// token that drops a superseded load's result.
+// Package loop is the plumbing of a tcell v3 host's async work: the queue
+// background goroutines hand results to the event loop through, the token that
+// drops a superseded load's result, and the starter that keeps a panic on a
+// background goroutine from taking the process down.
 //
 //   - poster.go — Poster: Post a callback from any goroutine and wake the
 //     loop; the loop Drains the queue on every iteration; Close orders the
@@ -8,12 +9,18 @@
 //   - latest.go — Latest: the latest-only load lifecycle; Begin supersedes
 //     and cancels the run in flight, Done drops a stale result and releases
 //     the current run's context, Cancel/Abandon stop without/with superseding
+//   - runner.go — Runner: the background side; Go/GoRepair start a labelled,
+//     recovered goroutine (GoRepair posts a repair before the report), Recover
+//     is the bare deferred form, FanOut a bounded pool recovering per item;
+//     Label sets the pprof op label every traceback header then prints
 //
 // It holds the protocol ARCHITECTURE.md § Threading states, written once: the
 // wakeup is sent from the posting goroutine, never from inside the posted
 // callback; a burst of posts sends one wakeup; the send never blocks; and no
-// send reaches EventQ() after Fini() has closed it. A host keeps its own
-// widgets single-threaded as before — nothing here touches one.
+// send reaches EventQ() after Fini() has closed it; and no background
+// goroutine's panic goes unrecovered, since the UI goroutine cannot recover it
+// and the host's Fini() would never run. A host keeps its own widgets
+// single-threaded as before — nothing here touches one.
 //
 // It imports only the standard library and tcell, nothing of tuikit.
 package loop

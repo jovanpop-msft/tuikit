@@ -151,12 +151,15 @@ tuikit/
 │               newest copy wins, a paste aimed once, bracketed paste as one
 │               edit, the OSC 52 reply). Write/Read are synchronous; the
 │               Dispatcher runs them through the host's Go and Post
-├── loop/       The UI-goroutine side of async work — poster.go (Poster: Post a
+├── loop/       Async plumbing (UI-goroutine and background sides) — poster.go (Poster: Post a
 │               callback from any goroutine and wake the event loop through
 │               EventQ(); Drain at the top of every iteration; Close orders the
 │               screen's Fini against a wake in flight), latest.go (Latest:
 │               a latest-only load's token + cancel — Begin supersedes and
-│               cancels the run in flight, Done drops a stale result).
+│               cancels the run in flight, Done drops a stale result),
+│               runner.go (Runner: the background side — Go/GoRepair/Recover
+│               start or guard a goroutine so a panic is reported, not fatal;
+│               FanOut is a bounded pool recovering per item).
 │               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
@@ -214,7 +217,7 @@ examples/*       → whatever they demonstrate; nothing imports them
 - **clipboard** is outside the widget graph: no widget calls it. A widget
   hands text over through `core.ClipboardTarget`; the host moves it to and
   from the system clipboard with this package.
-- **loop** is outside the widget graph too: no widget posts or wakes. It is
+- **loop** is outside the widget graph too: no widget posts, wakes or starts a goroutine. It is
   host plumbing, here because § Threading dictates the protocol and every
   tcell v3 host otherwise rewrites its bug-dense part.
 - **No language lives here.** A host's language plugs in through `Editor`'s

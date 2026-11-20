@@ -26,6 +26,17 @@ tree node's children, search-as-you-type) goes through `loop.Latest`: its
 token drops the superseded result *and* its cancel stops the superseded run,
 so it releases its connection now rather than at its timeout — every copy
 that shipped with only the token was a bug (`loop/latest_test.go`).
+The background goroutine itself starts through `loop.Runner`. The UI
+goroutine cannot recover a panic on another goroutine, so an unrecovered one
+kills the process before the host's `Fini()` restores the terminal. `Go`
+labels the goroutine (pprof `op`, which the traceback header prints) and hands
+a recovered panic, with the stack captured where it happened, to the host's
+`Report`; `GoRepair` first posts a repair for UI state the operation latched
+(a dimmed toolbar, a "loading" flag) — before the report, so the status bar's
+last word is the panic; `FanOut` is a bounded pool that recovers each item on
+its own and fills its queue before any worker starts, so a dead worker cannot
+block the producer (`loop/runner_test.go`). Like `Poster`, it is plumbing the
+host calls, not a control: the rule below still holds.
 
 **Async state is data, not goroutines.** No tuikit control spawns a goroutine
 or owns a timer:
