@@ -199,6 +199,74 @@ func TestToolRowRunGatesAndExplains(t *testing.T) {
 	}
 }
 
+// recordingMenu is a MenuShower that keeps what it was asked to show.
+type recordingMenu struct {
+	x, y  int
+	items []MenuItem
+}
+
+func (m *recordingMenu) Show(x, y int, items []MenuItem) { m.x, m.y, m.items = x, y, items }
+
+// TestToolRowGateSetOnceReachesEveryPath: with Disabled, Reason and Status set
+// on the row, RunCell, Run with nil arguments and the More menu all ask the
+// row's gate over the cells' fields, so the click and the menu cannot disagree;
+// an argument passed to Run still wins over the row's.
+func TestToolRowGateSetOnceReachesEveryPath(t *testing.T) {
+	ran := -1
+	var said []string
+	tr := &ToolRow{
+		Cells: []ToolCell{
+			{Label: "Refresh", Disabled: true, Action: func() { ran = 0 }},
+			{Label: "Export...", Action: func() { ran = 1 }},
+			{Label: "Find", Action: func() { ran = 2 }},
+		},
+		Disabled: func(i int) bool { return i == 1 },
+		Reason:   func(i int) string { return "no events" },
+		Status:   func(s string) { said = append(said, s) },
+	}
+
+	tr.RunCell(0)
+	if ran != 0 || len(said) != 0 {
+		t.Fatalf("row-allowed cell (field says disabled): ran %d, said %q", ran, said)
+	}
+	ran = -1
+	tr.RunCell(1)
+	if ran != -1 || !slices.Equal(said, []string{"Export: no events"}) {
+		t.Fatalf("row-withheld cell: ran %d, said %q", ran, said)
+	}
+	said = nil
+	var other []string
+	tr.Run(1, func(int) bool { return true }, func(int) string { return "busy" }, func(s string) { other = append(other, s) })
+	if ran != -1 || len(said) != 0 || !slices.Equal(other, []string{"Export: busy"}) {
+		t.Fatalf("arguments over the row: ran %d, row status %q, arg status %q", ran, said, other)
+	}
+
+	tr.Layout(core.Rect{X: 2, Y: 4, W: 22, H: 1}, "")
+	if !slices.Equal(tr.Hidden, []int{1, 2}) || tr.More.Rect.IsZero() {
+		t.Fatalf("layout: hidden %v, More %+v; want [1 2] behind More", tr.Hidden, tr.More.Rect)
+	}
+	var m recordingMenu
+	tr.OverflowMenu(&m, core.Rect{X: 30, Y: 9})
+	if m.x != tr.More.Rect.X || m.y != 5 || len(m.items) != 2 {
+		t.Fatalf("menu at (%d,%d) with %d items; want under More with 2", m.x, m.y, len(m.items))
+	}
+	if m.items[0].enabled() || m.items[0].Note != "no events" || !m.items[1].enabled() || m.items[1].Note != "" {
+		t.Errorf("items' gate: %v %q / %v %q", m.items[0].enabled(), m.items[0].Note, m.items[1].enabled(), m.items[1].Note)
+	}
+	m.items[0].Action()
+	m.items[1].Action()
+	if ran != 2 || !slices.Equal(said, []string{"Export: no events"}) {
+		t.Errorf("menu actions go through RunCell: ran %d, said %q", ran, said)
+	}
+
+	said = nil
+	tr.ReasonOnly = true
+	tr.RunCell(1)
+	if !slices.Equal(said, []string{"no events"}) {
+		t.Errorf("ReasonOnly: said %q, want the reason without the label", said)
+	}
+}
+
 // TestToolRowRunLabelDropsTheMenuAndDialogMarks: "Label: reason" reads the
 // label without the marks that say a dialog or menu follows.
 func TestToolRowRunLabelDropsTheMenuAndDialogMarks(t *testing.T) {
@@ -282,6 +350,22 @@ func TestToolRowDrawAsksThePredicateOverTheField(t *testing.T) {
 	}
 	if got := cellStyle(s, tr.Cells[1]); got != dim {
 		t.Errorf("predicate-disabled cell = %v, want dimmed", got)
+	}
+}
+
+// TestToolRowDrawAsksTheRowsDisabled: with nil passed, the row's Disabled
+// replaces the cell field, as in Run, so a cell that looks inert is.
+func TestToolRowDrawAsksTheRowsDisabled(t *testing.T) {
+	dim := theme.StyleTooltip().Foreground(theme.Active().TextDim)
+	tr, s := toolRowDrawn(t, func(tr *ToolRow) {
+		tr.Cells[0].Disabled = true
+		tr.Disabled = func(i int) bool { return i == 1 }
+	}, nil, false)
+	if got := cellStyle(s, tr.Cells[0]); got != theme.StyleTooltip() {
+		t.Errorf("field-disabled cell = %v, want undimmed: the row's predicate decides", got)
+	}
+	if got := cellStyle(s, tr.Cells[1]); got != dim {
+		t.Errorf("row-disabled cell = %v, want dimmed", got)
 	}
 }
 
