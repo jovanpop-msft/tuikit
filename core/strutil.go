@@ -438,6 +438,57 @@ func FormatBytes(n int64) string {
 	return strconv.FormatFloat(v, 'f', 1, 64) + " " + units[exp:exp+1] + "B"
 }
 
+// ParseFormattedNumber reads a cell rendered from a number, the inverse of
+// FormatThousands ("1,234") and FormatBytes ("4.0 KB"), and also a percentage
+// ("45%") or a number followed by a short unit ("250 ms", "12 rows"). Anything
+// else (a name, a date, a version such as 16.0.4135.4) is not a number. s is
+// expected trimmed.
+//
+// A byte unit (B through EB, the ones FormatBytes writes) scales the value to
+// bytes: FormatBytes picks its unit per value, so one column mixes "512 B",
+// "4.0 KB" and "1.2 MB", and comparing the bare mantissas put 4.0 KB before
+// 512 B. Other units are only stripped.
+//
+// strconv.ParseFloat alone is not the test: it also takes "Inf", "NaN" and hex
+// floats, which in a cell are names.
+func ParseFormattedNumber(s string) (float64, bool) {
+	scale := 1.0
+	if i := strings.LastIndexByte(s, ' '); i > 0 && isUnitSuffix(s[i+1:]) {
+		if f, ok := byteUnitScale[s[i+1:]]; ok {
+			scale = f
+		}
+		s = s[:i]
+	}
+	s = strings.TrimSuffix(s, "%")
+	s = strings.ReplaceAll(s, ",", "")
+	if s == "" || !strings.ContainsAny(s[:1], "0123456789+-.") ||
+		strings.ContainsAny(s, "xXpP_") {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	return n * scale, err == nil
+}
+
+// byteUnitScale is the factor to bytes of each binary unit FormatBytes writes.
+var byteUnitScale = map[string]float64{
+	"B": 1, "KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30,
+	"TB": 1 << 40, "PB": 1 << 50, "EB": 1 << 60,
+}
+
+// isUnitSuffix reports whether s reads as a short unit after a number (MB, KB,
+// ms, rows).
+func isUnitSuffix(s string) bool {
+	if s == "" || len(s) > 4 {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
 // EvRune extracts the first rune from a tcell v3 EventKey (via Str()), for
 // matching a key; text insertion uses EvText.
 func EvRune(ev interface{ Str() string }) rune {
@@ -509,4 +560,20 @@ func isWindowsDeviceName(name string) bool {
 		return false
 	}
 	return len(stem) == 1 && stem[0] >= '0' && stem[0] <= '9' || stem == "¹" || stem == "²" || stem == "³"
+}
+
+// MatchesAny reports whether any of fields contains term, case-insensitively,
+// with term's surrounding spaces ignored. An empty or blank term matches
+// everything, so a filter box starts out showing the whole list.
+func MatchesAny(term string, fields ...string) bool {
+	term = strings.ToLower(strings.TrimSpace(term))
+	if term == "" {
+		return true
+	}
+	for _, f := range fields {
+		if strings.Contains(strings.ToLower(f), term) {
+			return true
+		}
+	}
+	return false
 }

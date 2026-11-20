@@ -15,6 +15,11 @@
 //     is the bare deferred form, FanOut a bounded pool recovering per item,
 //     Tick a spinner's redraw clock that stops when done closes;
 //     Label sets the pprof op label every traceback header then prints
+//   - tasks.go — Tasks/Task: the registry of non-modal background tasks;
+//     Start hands out a task and its context, Progress/Done post from the
+//     worker, Finish settles it on the UI goroutine (Cancelled only for an
+//     error after a Cancel asked for while it ran, never ErrTaskPanicked),
+//     Keep caps the history without evicting a running task
 //
 // It holds the protocol ARCHITECTURE.md § Threading states, written once: the
 // wakeup is sent from the posting goroutine, never from inside the posted

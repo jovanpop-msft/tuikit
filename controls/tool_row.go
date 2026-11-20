@@ -120,6 +120,31 @@ func (tr *ToolRow) OverflowMenu(menu MenuShower, fallback core.Rect) {
 	menu.Show(x, y, tr.OverflowItems(nil, nil, tr.RunCell))
 }
 
+// Press acts on a Button1 press at (mx, my) on the row Layout placed in r:
+// More pops OverflowMenu on menu (anchored at fallback when More has no
+// rect), a cell runs through RunCell, and a gap — the prefix, the padding,
+// the columns a host draws after the row — does nothing. It reports whether
+// the press fell on the row at all, so the host claims it (arms its gesture
+// zone) either way: a dimmed cell or a gap swallows the press rather than
+// passing it to whatever lies under the row. r is not stored because Layout
+// does not keep it; pass the same rect. A host with its own control on the
+// row (a filter field) tests that first.
+//
+// More is tested before the cells. Layout never overlaps them, but a press
+// on More must open the menu even if a host moved a rect by hand, and owning
+// the order here is what keeps the hosts from disagreeing about it.
+func (tr *ToolRow) Press(r core.Rect, mx, my int, menu MenuShower, fallback core.Rect) bool {
+	if r.H != 1 || !r.Contains(mx, my) {
+		return false
+	}
+	if !tr.More.Rect.IsZero() && tr.More.Rect.Contains(mx, my) {
+		tr.OverflowMenu(menu, fallback)
+	} else if i := tr.CellAt(mx, my); i >= 0 {
+		tr.RunCell(i)
+	}
+	return true
+}
+
 // Layout places the cells left to right inside r, after prefix (a label the host
 // draws, such as "Refresh rate:"), and returns the column past the last cell
 // placed plus one gap — More included — which is where a host puts whatever shares

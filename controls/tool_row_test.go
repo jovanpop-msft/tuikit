@@ -267,6 +267,63 @@ func TestToolRowGateSetOnceReachesEveryPath(t *testing.T) {
 	}
 }
 
+// TestToolRowPressRunsTheCellOrOpensMore: a press on a cell runs it through
+// the row's gate, on More pops the menu under More, on a gap or the prefix is
+// claimed and does nothing, and off the row (or on a row Layout gave no
+// height) is not claimed.
+func TestToolRowPressRunsTheCellOrOpensMore(t *testing.T) {
+	ran := -1
+	var said []string
+	tr := &ToolRow{
+		Cells: []ToolCell{
+			{Label: "Refresh", Action: func() { ran = 0 }},
+			{Label: "Pause", Action: func() { ran = 1 }},
+			{Label: "Export...", Action: func() { ran = 2 }},
+			{Label: "Find", Action: func() { ran = 3 }},
+		},
+		Disabled: func(i int) bool { return i == 1 },
+		Reason:   func(int) string { return "nothing to pause" },
+		Status:   func(s string) { said = append(said, s) },
+	}
+	r := core.Rect{X: 2, Y: 4, W: 34, H: 1}
+	tr.Layout(r, "Go:")
+	if !slices.Equal(tr.Hidden, []int{2, 3}) || tr.More.Rect.IsZero() {
+		t.Fatalf("layout: hidden %v, More %+v; want [2 3] behind More", tr.Hidden, tr.More.Rect)
+	}
+	fb := core.Rect{X: 30, Y: 9, W: 10, H: 5}
+	var m recordingMenu
+
+	if !tr.Press(r, tr.Cells[0].Rect.X, 4, &m, fb) || ran != 0 || m.items != nil {
+		t.Fatalf("press on a cell: ran %d, menu %v", ran, m.items)
+	}
+	ran = -1
+	if !tr.Press(r, tr.Cells[1].Rect.Right()-1, 4, &m, fb) || ran != -1 ||
+		!slices.Equal(said, []string{"Pause: nothing to pause"}) {
+		t.Fatalf("press on a withheld cell: ran %d, said %q", ran, said)
+	}
+	if !tr.Press(r, tr.More.Rect.X+1, 4, &m, fb) || ran != -1 || len(m.items) != 2 ||
+		m.x != tr.More.Rect.X || m.y != 5 {
+		t.Fatalf("press on More: ran %d, menu at (%d,%d) with %d items", ran, m.x, m.y, len(m.items))
+	}
+	m = recordingMenu{}
+	for _, x := range []int{r.X + 1, tr.Cells[0].Rect.Right(), r.Right() - 1} {
+		if !tr.Press(r, x, 4, &m, fb) || ran != -1 || m.items != nil {
+			t.Errorf("press on the gap at %d: not claimed, or ran %d / menu %v", x, ran, m.items)
+		}
+	}
+	for _, p := range [][2]int{{tr.Cells[0].Rect.X, 3}, {tr.Cells[0].Rect.X, 5}, {r.X - 1, 4}, {r.Right(), 4}} {
+		if tr.Press(r, p[0], p[1], &m, fb) {
+			t.Errorf("press off the row at %v was claimed", p)
+		}
+	}
+	if tr.Press(core.Rect{X: 2, Y: 4, W: 34}, tr.Cells[0].Rect.X, 4, &m, fb) || ran != -1 {
+		t.Errorf("a row with no height claimed the press (ran %d)", ran)
+	}
+	if len(said) != 1 {
+		t.Errorf("status said %q, want only the withheld cell's refusal", said)
+	}
+}
+
 // TestToolRowRunLabelDropsTheMenuAndDialogMarks: "Label: reason" reads the
 // label without the marks that say a dialog or menu follows.
 func TestToolRowRunLabelDropsTheMenuAndDialogMarks(t *testing.T) {

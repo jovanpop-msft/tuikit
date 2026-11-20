@@ -5,6 +5,7 @@ import (
 
 	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
+	"github.com/radix29/tuikit/dialogs"
 	"github.com/radix29/tuikit/theme"
 )
 
@@ -41,10 +42,7 @@ func (r *SectionRow) Height(w int) int   { return 2 }
 func (r *SectionRow) Layout(x, y, w int) { r.x, r.y, r.w = x, y, w }
 func (r *SectionRow) Focusable() bool    { return false }
 func (r *SectionRow) Draw(s tcell.Screen, focused bool) {
-	st := theme.StyleDialog().Bold(true)
-	core.DrawText(s, r.x, r.y, st, r.title)
-	sep := theme.StyleDialogLine()
-	core.DrawHLine(s, r.x, r.y+1, r.w, sep)
+	dialogs.DrawSectionHeading(s, r.x, r.y, r.w, r.title)
 }
 
 // ---------------------------------------------------------------------------

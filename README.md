@@ -35,9 +35,13 @@ tuikit/
 │             — geometry.go (Rect, SplitColumns: equal columns with a
 │               gutter), screen.go, drawing.go, strutil.go (width,
 │               truncate, wrap, pad; FormatThousands; FormatBytes: a
-│               binary-unit size, unit chosen after rounding), mathutil.go,
+│               binary-unit size, unit chosen after rounding;
+│               ParseFormattedNumber: their inverse, byte units scaled to
+│               bytes; MatchesAny:
+│               a filter box's case-insensitive substring test), mathutil.go,
 │               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
-│               both scrollbars and their drag latches),
+│               navigation keys (ScrollKey: End keeps the column), both
+│               scrollbars and their drag latches),
 │               linepane.go (LinePane: a read-only line pane's scroll
 │               offset, clamp, inset draw and "more" hint),
 │               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
@@ -95,7 +99,9 @@ tuikit/
 │               dialog's flat []core.Focusable ring; RingMouse is its whole
 │               HandleMouse, in the one order § Mouse gestures allows),
 │               field_ring.go (FieldRing: such a dialog's focus/button
-│               state and its Key/Mouse/clipboard wiring in one value)
+│               state and its Key/Mouse/clipboard wiring in one value),
+│               section_heading.go (DrawSectionHeading: a bold title over a
+│               rule — propsheet's Section rows and page titles use it too)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types;
 │               MenuItem.Checked: a toggle drawn with MenuTick at draw time),
@@ -116,7 +122,9 @@ tuikit/
 │               optional top-border action, SetTitleButton), listbox.go;
 │               DataGrid: datagrid.go (state/source/widths), _draw, _input,
 │               _overlay (right-click menu, "Show Value"), _sort (a host's
-│               column sort: PermutedSource, SetSourceReordered, SortMenuItems);
+│               column sort: PermutedSource, SetSourceReordered, SortMenuItems),
+│               _textcell (a pre-rendered text cell read for sorting and
+│               SetAutoAlign: TextCellKey, CompareTextCells, ClassifyTextCell);
 │               value_viewer.go (ValueViewer: the modal read-only popup
 │               "Show Value" opens; a host can hold its own)
 │   └── editor/ Editor — document.go (the one text-mutation chokepoint; its
@@ -167,7 +175,12 @@ tuikit/
 │               start or guard a goroutine so a panic is reported, not fatal;
 │               GoOnce a single-flight run whose latch a panic releases;
 │               FanOut is a bounded pool recovering per item; Tick a
-│               spinner's redraw clock, stopped by closing done).
+│               spinner's redraw clock, stopped by closing done),
+│               tasks.go (Tasks/Task: non-modal background tasks — Start
+│               a task and its context, Progress/Done post from the worker,
+│               Finish settles it with the cancelled-vs-failed rule
+│               ProgressDialog.Run also keeps; ErrTaskPanicked; Keep caps
+│               the history, never evicting a running task).
 │               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
@@ -186,7 +199,10 @@ tuikit/
 │               edited behind a ListEditor — add/remove/restore/swap,
 │               dirty, revert, name checks under the host's equality), celltoggle.go
 │               (BindCellToggle/NewCellToggleGrid: activate a cell to change
-│               its row), staticblock.go (StaticBlock: detail rows filled
+│               its row), filterindex.go (FilterIndex: a filter box's
+│               view over a grid's list — rows map through it; its
+│               FilterRow's onFilter is where the host clears the detail
+│               on an empty result), staticblock.go (StaticBlock: detail rows filled
 │               from a selection, cleared as one), form.go; sheet.go
 │               (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
 └── examples/   Runnable programs, not library packages (nothing imports them)
