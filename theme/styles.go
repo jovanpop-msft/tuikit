@@ -116,6 +116,18 @@ func StyleDialogAccent() tcell.Style {
 func StyleDialogError() tcell.Style {
 	return On(active.DialogBg, active.DialogError)
 }
+
+// StyleDialogWarning is a dialog message that cautions rather than fails: a
+// search with no match, a filter that can't apply yet.
+func StyleDialogWarning() tcell.Style {
+	return On(active.DialogBg, active.DialogWarning)
+}
+
+// StyleDialogHighlight is emphasised dialog text: a section title, the current
+// entry of a list on a dialog ground.
+func StyleDialogHighlight() tcell.Style {
+	return On(active.DialogBg, active.DialogTextHighlight)
+}
 func StyleButton() tcell.Style {
 	return On(active.ButtonBg, active.ButtonFg)
 }

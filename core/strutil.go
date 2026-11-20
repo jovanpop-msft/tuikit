@@ -69,6 +69,36 @@ func Truncate(s string, n int) string {
 	return s
 }
 
+// TruncateLeft is Truncate cutting the front instead: it keeps the tail of s
+// and puts "…" before it, for a path, URL or breadcrumb whose end is the part
+// that tells two values apart. Grapheme clusters are never split; a wide one
+// straddling the budget is dropped whole.
+func TruncateLeft(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	// The grapheme iterator only runs forward, so record each cluster's start
+	// and width, then spend the budget from the end.
+	var starts, widths []int
+	pos, width := 0, 0
+	g := displaywidth.StringGraphemes(s)
+	for g.Next() {
+		starts = append(starts, pos)
+		widths = append(widths, g.Width())
+		width += g.Width()
+		pos += len(g.Value())
+	}
+	if width <= n {
+		return s
+	}
+	budget, cut := n-1, len(s) // reserve one column for the ellipsis
+	for i := len(starts) - 1; i >= 0 && widths[i] <= budget; i-- {
+		budget -= widths[i]
+		cut = starts[i]
+	}
+	return "…" + s[cut:]
+}
+
 // TruncateLine is Truncate for a one-row rendering of text that may hold line
 // breaks or tabs (a grid cell). CR, LF, CRLF and TAB each render as one space:
 // they measure 0 columns, so otherwise the words either side run together. A

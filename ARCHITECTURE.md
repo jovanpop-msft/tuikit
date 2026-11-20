@@ -16,6 +16,28 @@ screen's `EventQ()` channel — there is no `PostEvent`/`PollEvent` — and must
 send that wakeup from the background goroutine itself, not from inside the
 callback it posted: a wakeup queued inside a callback that runs only after a
 wakeup never fires, and the result sits until an unrelated keypress.
+`loop.Poster` is that protocol written once — post from any goroutine, one
+coalesced non-blocking wakeup per burst, a drain at the top of every loop
+iteration, and a close that orders `Fini()` against a wake in flight; a host
+uses it rather than hand-rolling the queue (`loop/poster_test.go` holds the
+races each rule answers).
+A load that a newer one supersedes (a preview following the selection, a
+tree node's children, search-as-you-type) goes through `loop.Latest`: its
+token drops the superseded result *and* its cancel stops the superseded run,
+so it releases its connection now rather than at its timeout — every copy
+that shipped with only the token was a bug (`loop/latest_test.go`).
+The background goroutine itself starts through `loop.Runner`. The UI
+goroutine cannot recover a panic on another goroutine, so an unrecovered one
+kills the process before the host's `Fini()` restores the terminal. `Go`
+labels the goroutine (pprof `op`, which the traceback header prints) and hands
+a recovered panic, with the stack captured where it happened, to the host's
+`Report`; `GoRepair` first posts a repair for UI state the operation latched
+(a dimmed toolbar, a "loading" flag) — before the report, so the status bar's
+last word is the panic; `GoOnce` is `GoRepair` for a single-flight
+button, owning its busy latch so a panic releases it too; `FanOut` is a bounded pool that recovers each item on
+its own and fills its queue before any worker starts, so a dead worker cannot
+block the producer (`loop/runner_test.go`). Like `Poster`, it is plumbing the
+host calls, not a control: the rule below still holds.
 
 **Async state is data, not goroutines.** No tuikit control spawns a goroutine
 or owns a timer:
@@ -35,11 +57,13 @@ or owns a timer:
   and the overwrite check into callback chains for a wait the indicator
   explains.
 - `clipboard.Write`/`Read` block on a shell-out or the Win32 clipboard lock
-  (bounded, about two seconds) and start no goroutine: the host runs them on
-  its own and posts the result back. The OSC 52 fallback (tcell's
-  `SetClipboard`/`GetClipboard`) writes to the terminal, so it belongs on the
-  UI goroutine, and a host with several copies in flight orders them itself
-  (newest wins) — the package keeps no such state.
+  (bounded, about two seconds) and start no goroutine. The OSC 52 fallback
+  (tcell's `SetClipboard`/`GetClipboard`) writes to the terminal, so it
+  belongs on the UI goroutine. `clipboard.Dispatcher` encodes both: it runs
+  Write/Read through the host's `Go`, returns through its `Post`
+  (`loop.Poster.Post`), orders several copies in flight (newest wins), and
+  is itself called only on the UI goroutine. A host calling Write/Read
+  directly owns that ordering itself.
 
 ## Mouse gestures
 
@@ -170,6 +194,18 @@ copies dragged to the button row and pressed it — accepting a rename or a
 typed confirmation. `TestFileDialogDragOutOfPathFieldKeepsExtending` fails on
 a mutation of any of the three main calls.
 
+A dialog whose whole surface is a flat focus ring (fields, checkboxes,
+drop-downs, a button row) does not place these calls itself:
+`dialogs.RingMouse` is its `HandleMouse`, `FieldRingKey`/`ButtonRowKey` its
+keyboard. It fixes the order — `TrackPress`; on release the latch-bearing
+members and `Release`; an open drop-down's first refusal; `ConsumeOutsideClick`;
+`ForwardReleaseToFocusedField`; `Replay`; buttons; `Claim` on a drag-starting
+member; the rest — which five hand-rolled copies had in five variants.
+`TestRingMouse` has one subtest per step. `dialogs.FieldRing` bundles the
+three with the state they share (focused stop, button focus, the gesture), so
+such a dialog forwards to it rather than wiring them. A dialog with tabs, a
+scrollable pane or a mode keeps its own `HandleMouse`.
+
 ### Not every mouse event draws
 
 A host may skip the frame after motion-only events while more are queued (a
@@ -188,7 +224,8 @@ A widget whose open state floats outside its rect — `DropDown`'s list,
   overlay from the method that draws the grid exposes its own `DrawOverlay`
   for *its* host to call last (`propsheet.GridRow` does).
 - offers every event to an `OverlayActive()` widget first in its own
-  `HandleKey`/`HandleMouse` — the wheel included — before positional routing.
+  `HandleKey`/`HandleMouse` — the wheel included — before positional routing
+  (`core.OpenOverlay(children...)` finds it among several).
   A `DropDown`'s open list is clamped to the *screen*, not the dialog, so a
   dialog routing one by hand offers it every event before
   `ConsumeOutsideClick`.

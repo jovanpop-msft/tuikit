@@ -23,11 +23,23 @@ type ToolbarButton struct {
 	// buttons last (leftmost first among equals). Dividers ignore it — one is
 	// hidden when it would lead, trail or double up.
 	DropRank int
+
+	// On, when non-nil, makes the button a toggle: Draw paints it in the
+	// selected style (bold StyleMenuSelected, as ToolRow paints a Selected
+	// cell) while On answers true. It is read at draw time and the Icon stays
+	// fixed, so the width does not change between states — flipping a toggle
+	// neither relayouts the row nor needs a SetButtons. Disabled wins over on.
+	On func() bool
 }
 
 // enabled reports whether b can be activated right now.
 func (b ToolbarButton) enabled() bool {
 	return b.Enabled == nil || b.Enabled()
+}
+
+// on reports whether a toggle button is on; false for a plain button.
+func (b ToolbarButton) on() bool {
+	return b.On != nil && b.On()
 }
 
 // toolbarButtonPad is the number of blank columns either side of a
@@ -193,6 +205,7 @@ func (tb *Toolbar) buttonAt(mx int) int {
 func (tb *Toolbar) Draw(s tcell.Screen) {
 	barStyle := theme.StyleMenuBar()
 	hoverStyle := theme.StyleMenuSelected()
+	onStyle := theme.StyleMenuSelected().Bold(true)
 	disabledStyle := theme.StyleDisabled()
 	for i, b := range tb.buttons {
 		if tb.widths[i] == 0 { // hidden by SetBounds
@@ -200,8 +213,11 @@ func (tb *Toolbar) Draw(s tcell.Screen) {
 		}
 		st := barStyle
 		switch {
-		case !b.Divider && !b.enabled():
+		case b.Divider:
+		case !b.enabled():
 			st = disabledStyle
+		case b.on():
+			st = onStyle
 		case i == tb.hover:
 			st = hoverStyle
 		}

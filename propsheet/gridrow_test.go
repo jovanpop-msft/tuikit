@@ -112,3 +112,16 @@ func TestGridRowForwardsNonArrowKeys(t *testing.T) {
 		t.Errorf("SelectedRow after End = %d, want the last row 2", got)
 	}
 }
+
+// Form.Grids reaches a ToggleGridRow's grid as well as a plain GridRow's: a
+// type switch on *GridRow alone missed it (gossms's Filegroups page stayed
+// left-aligned).
+func TestFormGridsIncludesEmbeddedGridRows(t *testing.T) {
+	plain := controls.NewDataGrid()
+	toggle := NewToggleGrid([]string{"Name", "On"}, []int{1}, 6)
+	f := NewForm(Text("Name", "n", 10), NewGridRow(plain, 6), Section("S"), toggle)
+	got := f.Grids()
+	if len(got) != 2 || got[0] != plain || got[1] != toggle.Grid {
+		t.Fatalf("Grids() = %v, want [plain, toggle.Grid]", got)
+	}
+}

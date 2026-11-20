@@ -102,3 +102,19 @@ type Overlay interface {
 	DrawOverlay(s tcell.Screen)
 	OverlayActive() bool
 }
+
+// OpenOverlay is the first of list whose overlay is open, and true; or T's
+// zero value (nil for a pointer type) and false when none is. A host with
+// several overlay-bearing children (a dialog's dropdowns, a panel's grids)
+// asks it which one takes first refusal of an event. Order is the caller's:
+// two children never have their overlays open at once in a host that routes
+// input this way, so the first is the only one.
+func OpenOverlay[T Overlay](list ...T) (T, bool) {
+	for _, o := range list {
+		if o.OverlayActive() {
+			return o, true
+		}
+	}
+	var zero T
+	return zero, false
+}

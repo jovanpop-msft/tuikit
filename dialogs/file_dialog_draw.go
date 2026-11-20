@@ -80,7 +80,6 @@ func (d *FileDialog) Draw(s tcell.Screen) {
 // drawEntry renders one list row at (x,y) — the Name column icon/marker,
 // clipped to nameColW, plus the right-aligned Size/Modified columns.
 func (d *FileDialog) drawEntry(s tcell.Screen, y, x, nameColW, idx int) {
-	p := theme.Active()
 	e := d.entries[idx]
 
 	st := theme.StyleDialog()
@@ -90,7 +89,7 @@ func (d *FileDialog) drawEntry(s tcell.Screen, y, x, nameColW, idx int) {
 		if d.focus == ffList {
 			st = theme.StyleSelected()
 		} else {
-			st = theme.On(p.DialogBg, p.DialogTextHighlight)
+			st = theme.StyleDialogHighlight()
 		}
 	}
 	// +1: also paint the scrollbar gutter so the selection highlight reaches the

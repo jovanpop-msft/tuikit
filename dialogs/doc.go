@@ -28,6 +28,9 @@
 //   - list_dialog.go        — ListDialog (pick a row of a live list, then a button)
 //   - log_dialog.go         — LogDialog (read-only newest-first log, selectable)
 //   - text_dialog.go        — TextDialog (scrollable reference text, hanging wrap)
+//   - field_ring.go         — FieldRing, a flat-ring dialog's focus and button
+//     state with its keyboard, mouse and clipboard wiring (focus_ring.go's
+//     operations, bundled)
 //   - find_replace_dialog.go — FindReplaceDialog (Find/Replace over an
 //     editor.Editor; MatchStatus, the match readout a host's F3 shares)
 //   - key_diagnostics_dialog.go — KeyDiagnosticsDialog (a LogDialog tracing the

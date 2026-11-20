@@ -54,6 +54,39 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
+func TestTruncateLeft(t *testing.T) {
+	const zwj = "👨\u200d👩\u200d👧" // one 2-column cluster of five runes
+	cases := []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"hello", 10, "hello"}, // fits, unchanged
+		{"abcde", 5, "abcde"},  // exactly n, returned whole
+		{"abcdef", 5, "…cdef"}, // one column over: the tail survives
+		{`C:\a\b\c.mdf`, 8, `…b\c.mdf`},
+		{"abc", 0, ""}, // n<=0 always empty
+		{"abc", -1, ""},
+		{"", 5, ""},                   // empty input
+		{"ab", 1, "…"},                // no room for anything but the ellipsis
+		{"a", 1, "a"},                 // ...unless it already fits
+		{"x你好", 4, "…好"},              // a wide grapheme straddling the budget is dropped whole
+		{"你好吗", 5, "…好吗"},             // wide tail, budget used exactly
+		{"ab" + zwj + "cd", 4, "…cd"}, // the ZWJ cluster would overflow: dropped whole, never split
+		{"ab" + zwj + "cd", 5, "…" + zwj + "cd"},
+		{"xyze\u0301", 2, "…e\u0301"}, // the combining mark stays with its base
+	}
+	for _, c := range cases {
+		got := TruncateLeft(c.s, c.n)
+		if got != c.want {
+			t.Errorf("TruncateLeft(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
+		}
+		if w := DisplayWidth(got); c.n > 0 && w > c.n {
+			t.Errorf("TruncateLeft(%q, %d) is %d columns wide", c.s, c.n, w)
+		}
+	}
+}
+
 func TestPadRight(t *testing.T) {
 	cases := []struct {
 		s    string

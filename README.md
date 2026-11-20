@@ -36,6 +36,8 @@ tuikit/
 │               gutter), screen.go, drawing.go, strutil.go, mathutil.go,
 │               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
 │               both scrollbars and their drag latches),
+│               linepane.go (LinePane: a read-only line pane's scroll
+│               offset, clamp, inset draw and "more" hint),
 │               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
 │               under a line's second column),
 │               runecol.go (rune index ↔ display column), wordutil.go (word
@@ -45,7 +47,8 @@ tuikit/
 │               ClipboardFocuser — the Copy/Cut/Paste
 │               contract every widget package shares),
 │               control.go (Focusable/Enabler/Bounded/KeyHandler/
-│               MouseHandler/Overlay — the control contract hosts assert on),
+│               MouseHandler/Overlay — the control contract hosts assert on;
+│               OpenOverlay: which of a host's children has its overlay open),
 │               gesture.go (Gesture: which zone of a host claimed the held
 │               Button1 press, routed to until release),
 │               click.go (ClickTracker: pairs fresh presses into a
@@ -65,7 +68,8 @@ tuikit/
 │               panel_manager.go, splitter.go, title_bar.go (DrawTitleBar:
 │               a panel's one-row title, active/inactive, optional
 │               right-aligned cell)
-├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Confirm/TypedConfirm
+├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Message
+│             (styled lines over the host's own buttons)/Confirm/TypedConfirm
 │             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
 │             row, then a button)/Log (read-only newest-first log in a
 │             selectable Editor; Record from any goroutine)/Text (scrollable
@@ -81,11 +85,16 @@ tuikit/
 │               field_gesture.go (FieldGesture: a dialog's drag latch for a
 │               gesture begun in one of its controls), focus_ring.go
 │               (SetFocusIn, NextFocus, RingStep, FieldRingKey,
-│               ButtonRowKey, ClipboardFieldAt,
+│               ButtonRowKey, ButtonsKey, StepButtonWrap, RingMouse,
+│               ClipboardFieldAt,
 │               ForwardReleaseToFocusedField …: the operations over a host
-│               dialog's flat []core.Focusable ring)
+│               dialog's flat []core.Focusable ring; RingMouse is its whole
+│               HandleMouse, in the one order § Mouse gestures allows),
+│               field_ring.go (FieldRing: such a dialog's focus/button
+│               state and its Key/Mouse/clipboard wiring in one value)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
-│             — menu_bar.go, context_menu.go, menu_item.go (shared types),
+│             — menu_bar.go, context_menu.go, menu_item.go (shared types;
+│               MenuItem.Checked: a toggle drawn with MenuTick at draw time),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
 │               Cut/Copy/Paste/Select All right-click menu),
 │               choice_items.go (ChoiceItems: a pick-one selector's menu,
@@ -95,7 +104,8 @@ tuikit/
 │               redraws them in place),
 │               menu_box.go (one box per menu level, root and submenus:
 │               draw, scroll, hit-test, keys for both hosts),
-│               toolbar.go, tool_row.go (a panel's text toolbar: layout,
+│               toolbar.go (ToolbarButton.On: a toggle painted selected
+│               while on, at a fixed width), tool_row.go (a panel's text toolbar: layout,
 │               hit-test, "More ▾"; drawn by the host), tab_bar.go (TabBar:
 │               a one-row strip of plain tabs plus an optional right-aligned
 │               cell, draw and hit-test over TabStripSegments), treeview.go (with an
@@ -131,14 +141,29 @@ tuikit/
 │               section_bar.go (a dashboard section's title strip with
 │               right-aligned KPIs), plot_hit.go (PlotHit: map a click on a
 │               drawn plot back to a bucket and the value drawn there),
-│               readout.go (the box a click on a chart pins: size, placement, draw)
+│               readout.go (the box a click on a chart pins: size, placement,
+│               draw; DrawAxisCallout names its moment on the time axis)
 ├── clipboard/  The system clipboard behind a host's Copy/Paste — native.go
 │               (Write/Read through pbcopy, wl-copy, xclip or xsel),
 │               native_windows.go (the Win32 CF_UNICODETEXT path; tuikit's one
 │               GOOS-suffixed file), terminal.go (TerminalLikely: did an OSC 52
 │               write probably land), paste.go (PasteBuffer: a bracketed
-│               paste's keys as one text; StripBOMs). Synchronous: the host
-│               calls Write/Read off its UI goroutine
+│               paste's keys as one text; StripBOMs), dispatcher.go
+│               (Dispatcher: Copy/Paste/HandleEvent over the above —
+│               newest copy wins, a paste aimed once, bracketed paste as one
+│               edit, the OSC 52 reply). Write/Read are synchronous; the
+│               Dispatcher runs them through the host's Go and Post
+├── loop/       Async plumbing (UI-goroutine and background sides) — poster.go (Poster: Post a
+│               callback from any goroutine and wake the event loop through
+│               EventQ(); Drain at the top of every iteration; Close orders the
+│               screen's Fini against a wake in flight), latest.go (Latest:
+│               a latest-only load's token + cancel — Begin supersedes and
+│               cancels the run in flight, Done drops a stale result),
+│               runner.go (Runner: the background side — Go/GoRepair/Recover
+│               start or guard a goroutine so a panic is reported, not fatal;
+│               GoOnce a single-flight run whose latch a panic releases;
+│               FanOut is a bounded pool recovering per item).
+│               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
 │               mockscreen.go (NewMockScreen: tcell's own screen on a mock
@@ -151,7 +176,10 @@ tuikit/
 │               for none that never reads back as a value), buttonsrow.go,
 │               gridrow.go, editorrow.go, togglegrid.go, griddetail.go
 │               (BindGridDetail: detail rows following a grid's selection),
-│               listeditor.go (ListEditor: BindGridDetail + Add/Remove), celltoggle.go
+│               listeditor.go (ListEditor: BindGridDetail + Add/Remove),
+│               pendingedits.go (PendingEdits: the rows as loaded and as
+│               edited behind a ListEditor — add/remove/restore/swap,
+│               dirty, revert, name checks under the host's equality), celltoggle.go
 │               (BindCellToggle/NewCellToggleGrid: activate a cell to change
 │               its row), staticblock.go (StaticBlock: detail rows filled
 │               from a selection, cleared as one), form.go; sheet.go
@@ -177,6 +205,7 @@ layout           —
 dialogs          → widgets, controls/editor
 propsheet        → dialogs, controls, controls/editor, widgets
 clipboard        imports no tuikit package, not even core/theme (tcell only)
+loop             imports no tuikit package, not even core/theme (tcell only)
 examples/*       → whatever they demonstrate; nothing imports them
 ```
 
@@ -191,6 +220,9 @@ examples/*       → whatever they demonstrate; nothing imports them
 - **clipboard** is outside the widget graph: no widget calls it. A widget
   hands text over through `core.ClipboardTarget`; the host moves it to and
   from the system clipboard with this package.
+- **loop** is outside the widget graph too: no widget posts, wakes or starts a goroutine. It is
+  host plumbing, here because § Threading dictates the protocol and every
+  tcell v3 host otherwise rewrites its bug-dense part.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`
@@ -258,8 +290,9 @@ cursor on its row, not its index.
 **Display width, not bytes or runes.** `core.DisplayWidth(s)` (via
 `clipperhouse/displaywidth`) is the one answer to "how many columns", handling
 wide CJK and grapheme clusters; `core.DrawText`, `DrawTextClipped`,
-`DrawTextRight`, `Truncate`, `PadRight` build on it. Anything positioned after
-a label uses `core.DisplayWidth(label)`, never `len(label)`, or drawing and
+`DrawTextRight`, `Truncate`, `TruncateLeft` (keeps the tail, for paths),
+`PadRight` build on it. Anything positioned after a label uses
+`core.DisplayWidth(label)`, never `len(label)`, or drawing and
 hit-testing desync. Rune-indexed text (`Editor`, `InputField` cursors,
 selections, wrap segments) converts via `core/runecol.go` only — `RunesWidth`,
 `ColumnOfRune`, `RuneIndexAtColumn`/`ClusterAtColumn`, and `GraphemeAt`,

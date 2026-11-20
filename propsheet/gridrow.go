@@ -53,6 +53,11 @@ func (r *GridRow) Focusable() bool     { return true }
 // can be read past its first row.
 func (r *GridRow) Browsable() bool { return true }
 
+// DataGrid implements GridHolder. It is promoted to every row that embeds a
+// *GridRow (ToggleGridRow, a host's own), which is what lets Form.Grids find
+// them where a type switch on *GridRow would not.
+func (r *GridRow) DataGrid() *controls.DataGrid { return r.Grid }
+
 // SetDrawReadOnly implements ReadOnlyDrawer by putting the grid in browse-only
 // mode (controls.DataGrid.SetBrowseOnly), the half of read-only that keeps a
 // focusable grid from editing. The gate is the grid's, not a key filter here: it

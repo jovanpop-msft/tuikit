@@ -10,6 +10,8 @@
 //   - strutil.go     — DisplayWidth/Truncate/WrapText/PadRight/EvRune
 //   - viewport.go    — Viewport, the offset/clamp/wheel/scrollbars of a view
 //     onto a canvas larger than it in both axes
+//   - linepane.go    — LinePane, the scroll offset/clamp/draw of a read-only
+//     pane of text lines (details panes)
 //   - wrap_hanging.go — WrapHanging, a wrap that keeps spacing and hangs a
 //     continuation under a line's second column (key references)
 //   - runecol.go     — rune-index <-> terminal-column conversion

@@ -102,7 +102,6 @@ func (l *ListBox) Bounds() core.Rect { return l.rect }
 
 // Draw renders the list.
 func (l *ListBox) Draw(s tcell.Screen) {
-	p := theme.Active()
 	base := theme.StyleDialog()
 	core.FillRect(s, l.rect, ' ', base)
 
@@ -127,7 +126,7 @@ func (l *ListBox) Draw(s tcell.Screen) {
 			if l.focused {
 				st = theme.StyleSelected()
 			} else {
-				st = theme.On(p.DialogBg, p.DialogTextHighlight)
+				st = theme.StyleDialogHighlight()
 			}
 			core.FillRect(s, core.Rect{X: l.rect.X, Y: y, W: l.rect.W, H: 1}, ' ', st)
 		}

@@ -76,42 +76,42 @@ func TestFindDialogTabReachesButtons(t *testing.T) {
 	d.ShowFind(e)
 
 	// While focus is in the fields, Enter presses Find Next (button 0).
-	if d.btnFocus != findBtnNext {
-		t.Fatalf("btnFocus = %d with a field focused, want Find Next", d.btnFocus)
+	if d.ring.BtnFocus != findBtnNext {
+		t.Fatalf("btnFocus = %d with a field focused, want Find Next", d.ring.BtnFocus)
 	}
 	// Four fields, then the button row as one stop.
 	for range 4 {
 		d.HandleKey(findKey(tcell.KeyTab))
 	}
-	if !d.onButtons() || d.btnFocus != findBtnNext {
-		t.Fatalf("after 4 Tabs: focusIdx=%d btnFocus=%d, want the row on Find Next", d.focusIdx, d.btnFocus)
+	if !d.ring.OnButtons() || d.ring.BtnFocus != findBtnNext {
+		t.Fatalf("after 4 Tabs: focusIdx=%d btnFocus=%d, want the row on Find Next", d.ring.FocusIdx, d.ring.BtnFocus)
 	}
 	// Right walks the row; Tab leaves it, wrapping to the first field.
 	d.HandleKey(findKey(tcell.KeyRight))
-	if d.btnFocus != findBtnPrev {
-		t.Fatalf("btnFocus = %d after Right, want %d (Find Previous)", d.btnFocus, findBtnPrev)
+	if d.ring.BtnFocus != findBtnPrev {
+		t.Fatalf("btnFocus = %d after Right, want %d (Find Previous)", d.ring.BtnFocus, findBtnPrev)
 	}
 	d.HandleKey(findKey(tcell.KeyTab))
-	if d.focusIdx != 0 || d.btnFocus != findBtnNext {
-		t.Fatalf("after Tab off the row: focusIdx=%d btnFocus=%d, want 0 and Find Next", d.focusIdx, d.btnFocus)
+	if d.ring.FocusIdx != 0 || d.ring.BtnFocus != findBtnNext {
+		t.Fatalf("after Tab off the row: focusIdx=%d btnFocus=%d, want 0 and Find Next", d.ring.FocusIdx, d.ring.BtnFocus)
 	}
 	// Backtab from the first field wraps onto the row; Up leaves the row to
 	// the last field and keeps moving back, like Backtab.
 	d.HandleKey(findKey(tcell.KeyBacktab))
-	if !d.onButtons() {
-		t.Fatalf("focusIdx = %d after Backtab from the first field, want the button row", d.focusIdx)
+	if !d.ring.OnButtons() {
+		t.Fatalf("focusIdx = %d after Backtab from the first field, want the button row", d.ring.FocusIdx)
 	}
 	d.HandleKey(findKey(tcell.KeyUp))
-	if d.focusIdx != 3 {
-		t.Fatalf("focusIdx = %d after Up from the row, want 3 (the last field)", d.focusIdx)
+	if d.ring.FocusIdx != 3 {
+		t.Fatalf("focusIdx = %d after Up from the row, want 3 (the last field)", d.ring.FocusIdx)
 	}
 	d.HandleKey(findKey(tcell.KeyUp))
-	if d.focusIdx != 2 {
-		t.Fatalf("focusIdx = %d after another Up, want 2", d.focusIdx)
+	if d.ring.FocusIdx != 2 {
+		t.Fatalf("focusIdx = %d after another Up, want 2", d.ring.FocusIdx)
 	}
 	d.HandleKey(findKey(tcell.KeyDown))
-	if d.focusIdx != 3 {
-		t.Fatalf("focusIdx = %d after Down, want 3", d.focusIdx)
+	if d.ring.FocusIdx != 3 {
+		t.Fatalf("focusIdx = %d after Down, want 3", d.ring.FocusIdx)
 	}
 }
 
@@ -319,12 +319,12 @@ func TestFindDialogShowClearsTheDragLatch(t *testing.T) {
 	// by assignment, so the test also pins that a press arms one at all.
 	ix, y := d.fFind.InputX(), d.fFind.Bounds().Y
 	d.HandleMouse(tcell.NewEventMouse(ix+1, y, tcell.Button1, tcell.ModNone))
-	if d.drag.Field() == nil {
+	if d.ring.Drag.Field() == nil {
 		t.Fatal("the press did not arm a latch — test premise is wrong")
 	}
 
 	d.ShowFind(e)
-	if d.drag.Field() != nil {
+	if d.ring.Drag.Field() != nil {
 		t.Error("Show left a drag latch armed from the previous showing")
 	}
 }
@@ -349,12 +349,12 @@ func TestFindDialogDragOutOfAFieldKeepsExtending(t *testing.T) {
 	if got := d.fFind.SelectedText(); got != "abcde" {
 		t.Errorf("SelectedText() = %q, want %q — the drag stopped at the box edge", got, "abcde")
 	}
-	if d.focusIdx != 0 {
-		t.Errorf("focusIdx = %d, want 0 — a widget below stole a gesture fFind owned", d.focusIdx)
+	if d.ring.FocusIdx != 0 {
+		t.Errorf("focusIdx = %d, want 0 — a widget below stole a gesture fFind owned", d.ring.FocusIdx)
 	}
 
 	d.HandleMouse(tcell.NewEventMouse(0, 0, tcell.ButtonNone, tcell.ModNone))
-	if d.drag.Field() != nil {
+	if d.ring.Drag.Field() != nil {
 		t.Fatal("a release outside the dialog left the gesture latched")
 	}
 	if d.fFind.HandleMouse(tcell.NewEventMouse(ix+6, y+3, tcell.Button1, tcell.ModNone)) {
