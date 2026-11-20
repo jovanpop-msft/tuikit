@@ -45,11 +45,13 @@ or owns a timer:
   and the overwrite check into callback chains for a wait the indicator
   explains.
 - `clipboard.Write`/`Read` block on a shell-out or the Win32 clipboard lock
-  (bounded, about two seconds) and start no goroutine: the host runs them on
-  its own and posts the result back. The OSC 52 fallback (tcell's
-  `SetClipboard`/`GetClipboard`) writes to the terminal, so it belongs on the
-  UI goroutine, and a host with several copies in flight orders them itself
-  (newest wins) — the package keeps no such state.
+  (bounded, about two seconds) and start no goroutine. The OSC 52 fallback
+  (tcell's `SetClipboard`/`GetClipboard`) writes to the terminal, so it
+  belongs on the UI goroutine. `clipboard.Dispatcher` encodes both: it runs
+  Write/Read through the host's `Go`, returns through its `Post`
+  (`loop.Poster.Post`), orders several copies in flight (newest wins), and
+  is itself called only on the UI goroutine. A host calling Write/Read
+  directly owns that ordering itself.
 
 ## Mouse gestures
 

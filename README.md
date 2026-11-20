@@ -36,6 +36,8 @@ tuikit/
 │               gutter), screen.go, drawing.go, strutil.go, mathutil.go,
 │               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
 │               both scrollbars and their drag latches),
+│               linepane.go (LinePane: a read-only line pane's scroll
+│               offset, clamp, inset draw and "more" hint),
 │               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
 │               under a line's second column),
 │               runecol.go (rune index ↔ display column), wordutil.go (word
@@ -144,8 +146,11 @@ tuikit/
 │               native_windows.go (the Win32 CF_UNICODETEXT path; tuikit's one
 │               GOOS-suffixed file), terminal.go (TerminalLikely: did an OSC 52
 │               write probably land), paste.go (PasteBuffer: a bracketed
-│               paste's keys as one text; StripBOMs). Synchronous: the host
-│               calls Write/Read off its UI goroutine
+│               paste's keys as one text; StripBOMs), dispatcher.go
+│               (Dispatcher: Copy/Paste/HandleEvent over the above —
+│               newest copy wins, a paste aimed once, bracketed paste as one
+│               edit, the OSC 52 reply). Write/Read are synchronous; the
+│               Dispatcher runs them through the host's Go and Post
 ├── loop/       The UI-goroutine side of async work — poster.go (Poster: Post a
 │               callback from any goroutine and wake the event loop through
 │               EventQ(); Drain at the top of every iteration; Close orders the
@@ -165,7 +170,10 @@ tuikit/
 │               for none that never reads back as a value), buttonsrow.go,
 │               gridrow.go, editorrow.go, togglegrid.go, griddetail.go
 │               (BindGridDetail: detail rows following a grid's selection),
-│               listeditor.go (ListEditor: BindGridDetail + Add/Remove), celltoggle.go
+│               listeditor.go (ListEditor: BindGridDetail + Add/Remove),
+│               pendingedits.go (PendingEdits: the rows as loaded and as
+│               edited behind a ListEditor — add/remove/restore/swap,
+│               dirty, revert, name checks under the host's equality), celltoggle.go
 │               (BindCellToggle/NewCellToggleGrid: activate a cell to change
 │               its row), staticblock.go (StaticBlock: detail rows filled
 │               from a selection, cleared as one), form.go; sheet.go
