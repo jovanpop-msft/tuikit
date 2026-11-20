@@ -129,8 +129,8 @@ func (g *DataGrid) setOverrideWidth(i, w int) {
 // restoreOverrideWidths reinstates a column set's dragged widths and recomputes
 // once, for SetDataPreservingView. Calling SetColumnWidth per column runs a full
 // computeColWidths (a rescan of up to colWidthSampleRows rows) per column, and
-// that runs on every redrawGrid, i.e. every keystroke on a grid-backed
-// Properties page. Applies SetColumnWidth's minResizeWidth floor so a restored
+// that runs on every SetDataPreservingView, which a host may call on every
+// keystroke (a grid-backed property page re-rendering as the user edits). Applies SetColumnWidth's minResizeWidth floor so a restored
 // width is what a drag would have set.
 //
 // The recompute is conditional because widths is always column-count long

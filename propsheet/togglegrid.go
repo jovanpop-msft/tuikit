@@ -133,8 +133,7 @@ func (t *ToggleGridRow) render() {
 }
 
 // renderPreservingView re-renders the same rows without moving the grid under
-// the user; see controls.DataGrid.SetDataPreservingView and redrawGrid in the
-// application layer.
+// the user; see controls.DataGrid.SetDataPreservingView.
 func (t *ToggleGridRow) renderPreservingView() {
 	t.Grid.SetDataPreservingView(t.columns, t.renderRows())
 }

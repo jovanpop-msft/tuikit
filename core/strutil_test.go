@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -210,6 +211,24 @@ func TestParseFormattedNumberRoundTrips(t *testing.T) {
 		s := FormatThousands(n)
 		if got, ok := ParseFormattedNumber(s); !ok || got != float64(n) {
 			t.Errorf("ParseFormattedNumber(FormatThousands(%d) = %q) = %v, %v", n, s, got, ok)
+		}
+	}
+}
+
+func TestFormatClock(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "00:00:00"},
+		{-time.Second, "00:00:00"},            // a clock skew must not print "-1:59:59"
+		{1500 * time.Millisecond, "00:00:01"}, // truncates: a live timer must not run ahead
+		{time.Hour + 2*time.Minute + 3*time.Second, "01:02:03"},
+		{100 * time.Hour, "100:00:00"}, // hours are not clamped to two digits
+	}
+	for _, c := range cases {
+		if got := FormatClock(c.d); got != c.want {
+			t.Errorf("FormatClock(%v) = %q, want %q", c.d, got, c.want)
 		}
 	}
 }

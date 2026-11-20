@@ -1,9 +1,11 @@
 package core
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/clipperhouse/displaywidth"
@@ -436,6 +438,19 @@ func FormatBytes(n int64) string {
 		exp++
 	}
 	return strconv.FormatFloat(v, 'f', 1, 64) + " " + units[exp:exp+1] + "B"
+}
+
+// FormatClock renders a duration as "HH:MM:SS", hours unclamped ("100:00:00").
+// It is the one clock-style duration renderer, so a duration that took an hour
+// and two minutes reads the same in a progress view, a running timer and a
+// grid cell.
+//
+// Seconds truncate rather than round, which is what a running clock needs: a
+// live timer must never show a second that hasn't elapsed. A negative duration
+// (clock skew between two timestamps) reads as zero, never "-1:59:59".
+func FormatClock(d time.Duration) string {
+	sec := int(max(0, d) / time.Second)
+	return fmt.Sprintf("%02d:%02d:%02d", sec/3600, sec/60%60, sec%60)
 }
 
 // ParseFormattedNumber reads a cell rendered from a number, the inverse of

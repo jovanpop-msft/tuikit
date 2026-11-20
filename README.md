@@ -35,7 +35,8 @@ tuikit/
 │             — geometry.go (Rect, SplitColumns: equal columns with a
 │               gutter), screen.go, drawing.go, strutil.go (width,
 │               truncate, wrap, pad; FormatThousands; FormatBytes: a
-│               binary-unit size, unit chosen after rounding;
+│               binary-unit size, unit chosen after rounding; FormatClock:
+│               a truncating HH:MM:SS;
 │               ParseFormattedNumber: their inverse, byte units scaled to
 │               bytes; MatchesAny:
 │               a filter box's case-insensitive substring test), mathutil.go,
@@ -57,6 +58,8 @@ tuikit/
 │               OpenOverlay: which of a host's children has its overlay open),
 │               gesture.go (Gesture: which zone of a host claimed the held
 │               Button1 press, routed to until release),
+│               drag.go (Drag: a drag-and-drop payload armed on a press,
+│               started past a threshold, dropped on release; its ghost),
 │               click.go (ClickTracker: pairs fresh presses into a
 │               double-click; DoubleClickInterval, the one speed),
 │               buffer.go (Buffer: an off-screen cell grid satisfying
@@ -101,7 +104,10 @@ tuikit/
 │               field_ring.go (FieldRing: such a dialog's focus/button
 │               state and its Key/Mouse/clipboard wiring in one value),
 │               section_heading.go (DrawSectionHeading: a bold title over a
-│               rule — propsheet's Section rows and page titles use it too)
+│               rule — propsheet's Section rows and page titles use it too),
+│               task_progress.go (DrawTaskProgress: a loop.Task's bar,
+│               elapsed/remaining times and message, the message wrapped over
+│               every row left; TaskMessage, its default wording)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types;
 │               MenuItem.Checked: a toggle drawn with MenuTick at draw time),
@@ -246,7 +252,7 @@ examples/*       → whatever they demonstrate; nothing imports them
   tcell v3 host otherwise rewrites its bug-dense part. Its one tuikit
   importer is `dialogs`, for `ProgressDialog.Run`, which takes the host's
   `Runner` and `Poster` as arguments, as `clipboard.Dispatcher` takes its `Go`
-  and `Post`.
+  and `Post`, and for `DrawTaskProgress`, which only reads a `Task`.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`

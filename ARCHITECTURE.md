@@ -168,6 +168,18 @@ beyond the view and scrolls one toward it per motion event: tuikit has no
 timer, so a pointer resting outside does not keep scrolling. A toggle grid's
 drag paints only cells under the pointer and never scrolls.
 
+### core.Drag: carrying a payload between regions
+
+A drag that drops something on another region (goSSMS's Object Explorer node
+into a query editor) is a router-level gesture, not a widget's. `core.Drag[P]`
+is armed on a fresh press from what the press hit, starts only once the
+pointer is `Threshold` cells away (a press held still is a click), and hands
+the payload back from `Release` only if it started. The host calls `Release`
+on `ButtonNone` before `Route`, and `Route` ahead of its `Gesture`, menu row
+and splitter, so an armed drag takes every event until the release; any
+other button cancels it. Whether the drop is still valid (no modal opened
+mid-drag) and what it does are the host's.
+
 ### dialogs.Stack: releases go to every open dialog
 
 `Stack.HandleMouse` hands a release to every open dialog, not just the front
