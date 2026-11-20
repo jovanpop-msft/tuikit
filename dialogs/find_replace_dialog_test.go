@@ -75,30 +75,43 @@ func TestFindDialogTabReachesButtons(t *testing.T) {
 	d, e := newFindTest(t, "x")
 	d.ShowFind(e)
 
-	// Four fields then three buttons in Find mode.
-	if got, want := d.focusCount(), 7; got != want {
-		t.Fatalf("focusCount = %d, want %d", got, want)
-	}
 	// While focus is in the fields, Enter presses Find Next (button 0).
-	if got := d.btnFocus(); got != 0 {
-		t.Fatalf("btnFocus = %d with a field focused, want 0", got)
+	if d.btnFocus != findBtnNext {
+		t.Fatalf("btnFocus = %d with a field focused, want Find Next", d.btnFocus)
 	}
+	// Four fields, then the button row as one stop.
 	for range 4 {
 		d.HandleKey(findKey(tcell.KeyTab))
 	}
-	if got := d.btnFocus(); got != 0 || d.focusIdx != 4 {
-		t.Fatalf("after 4 Tabs: focusIdx=%d btnFocus=%d, want the first button", d.focusIdx, got)
+	if !d.onButtons() || d.btnFocus != findBtnNext {
+		t.Fatalf("after 4 Tabs: focusIdx=%d btnFocus=%d, want the row on Find Next", d.focusIdx, d.btnFocus)
+	}
+	// Right walks the row; Tab leaves it, wrapping to the first field.
+	d.HandleKey(findKey(tcell.KeyRight))
+	if d.btnFocus != findBtnPrev {
+		t.Fatalf("btnFocus = %d after Right, want %d (Find Previous)", d.btnFocus, findBtnPrev)
 	}
 	d.HandleKey(findKey(tcell.KeyTab))
-	if got := d.btnFocus(); got != findBtnPrev {
-		t.Fatalf("btnFocus = %d after another Tab, want %d (Find Previous)", got, findBtnPrev)
+	if d.focusIdx != 0 || d.btnFocus != findBtnNext {
+		t.Fatalf("after Tab off the row: focusIdx=%d btnFocus=%d, want 0 and Find Next", d.focusIdx, d.btnFocus)
 	}
-	// Tab wraps back around to the first field rather than dead-ending.
-	for range 2 {
-		d.HandleKey(findKey(tcell.KeyTab))
+	// Backtab from the first field wraps onto the row; Up leaves the row to
+	// the last field and keeps moving back, like Backtab.
+	d.HandleKey(findKey(tcell.KeyBacktab))
+	if !d.onButtons() {
+		t.Fatalf("focusIdx = %d after Backtab from the first field, want the button row", d.focusIdx)
 	}
-	if d.focusIdx != 0 {
-		t.Fatalf("focusIdx = %d after wrapping, want 0", d.focusIdx)
+	d.HandleKey(findKey(tcell.KeyUp))
+	if d.focusIdx != 3 {
+		t.Fatalf("focusIdx = %d after Up from the row, want 3 (the last field)", d.focusIdx)
+	}
+	d.HandleKey(findKey(tcell.KeyUp))
+	if d.focusIdx != 2 {
+		t.Fatalf("focusIdx = %d after another Up, want 2", d.focusIdx)
+	}
+	d.HandleKey(findKey(tcell.KeyDown))
+	if d.focusIdx != 3 {
+		t.Fatalf("focusIdx = %d after Down, want 3", d.focusIdx)
 	}
 }
 

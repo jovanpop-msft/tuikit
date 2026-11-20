@@ -21,9 +21,11 @@
 //
 // spinner.go is the exception: a Spinner is a busy indicator, not an input, so
 // it has no bounds, focus or events. It answers which frame shows for a given
-// elapsed duration and leaves the redraw clock to the host.
+// elapsed duration and leaves the redraw clock to the host. progress_bar.go's
+// DrawProgressBar is the other: a determinate bar is stateless and never takes
+// focus, so it is a draw function, not a widget value.
 //
 // One file per widget: input_field.go, dropdown.go, checkbox.go, button.go,
-// radiobox.go, spinner.go. common.go holds small helpers shared across more
+// radiobox.go, spinner.go, progress_bar.go. common.go holds small helpers shared across more
 // than one of them.
 package widgets

@@ -32,7 +32,8 @@ shipped in an application built on tuikit.
 tuikit/
 ├── theme/      Colour palette + derived tcell.Style helpers — palette.go, styles.go
 ├── core/       Rect geometry, drawing primitives, string/int helpers
-│             — geometry.go, screen.go, drawing.go, strutil.go, mathutil.go,
+│             — geometry.go (Rect, SplitColumns: equal columns with a
+│               gutter), screen.go, drawing.go, strutil.go, mathutil.go,
 │               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
 │               both scrollbars and their drag latches),
 │               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
@@ -57,7 +58,9 @@ tuikit/
 │               keys.go (NormalizeKey: the Ctrl+letter fold), mouse.go
 │               (MouseEventName: "Shift+Button1", tcell's missing
 │               EventMouse.Name)
-├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each
+├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each;
+│               progress_bar.go (DrawProgressBar: a determinate █/░ bar
+│               with a trailing percentage, negative = indeterminate)
 ├── layout/     Panel interface, PanelManager (tabs), Splitter — panel.go,
 │               panel_manager.go, splitter.go, title_bar.go (DrawTitleBar:
 │               a panel's one-row title, active/inactive, optional
@@ -77,7 +80,8 @@ tuikit/
 │               and BlockingFileSystem for the "Listing ..." repaint);
 │               field_gesture.go (FieldGesture: a dialog's drag latch for a
 │               gesture begun in one of its controls), focus_ring.go
-│               (SetFocusIn, NextFocus, ButtonRowKey, ClipboardFieldAt,
+│               (SetFocusIn, NextFocus, RingStep, FieldRingKey,
+│               ButtonRowKey, ClipboardFieldAt,
 │               ForwardReleaseToFocusedField …: the operations over a host
 │               dialog's flat []core.Focusable ring)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
@@ -124,6 +128,9 @@ tuikit/
 │               axis.go, legend.go, common.go (Series, stacked-run composition),
 │               history.go, stacked_history.go, barchart.go, stacked_bar.go,
 │               vbar.go, kpi.go, panel_title.go (a chart panel's heading row),
+│               section_bar.go (a dashboard section's title strip with
+│               right-aligned KPIs), plot_hit.go (PlotHit: map a click on a
+│               drawn plot back to a bucket and the value drawn there),
 │               readout.go (the box a click on a chart pins: size, placement, draw)
 ├── clipboard/  The system clipboard behind a host's Copy/Paste — native.go
 │               (Write/Read through pbcopy, wl-copy, xclip or xsel),
@@ -138,7 +145,10 @@ tuikit/
 │               terminal), events.go (Key/Rune/Mouse/Press/Release builders)
 ├── propsheet/  PropertySheet — multi-page editable properties dialog framework
 │             — doc.go, common.go, rows.go (Section/Note/Hint/Static),
-│               textrow.go, choicerows.go (Check/Select/Radio), buttonsrow.go,
+│               textrow.go, choicerows.go (Check/Select/Radio),
+│               preservingselect.go (SelectPreserving/PreservingItems: a
+│               Select that shows a value its list lacks, with a stand-in
+│               for none that never reads back as a value), buttonsrow.go,
 │               gridrow.go, editorrow.go, togglegrid.go, griddetail.go
 │               (BindGridDetail: detail rows following a grid's selection),
 │               listeditor.go (ListEditor: BindGridDetail + Add/Remove), celltoggle.go

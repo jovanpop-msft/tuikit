@@ -58,9 +58,12 @@ type FindReplaceDialog struct {
 	// starts; see FieldGesture for the ordering its three calls need.
 	drag FieldGesture
 
-	// focusIdx walks fields first, then buttons (see focusCount); one cycle, so Tab
-	// alone reaches everything the dialog can do.
+	// focusIdx is the focused field, or len(fields()) for the button row, which
+	// is one Tab stop crossed with the arrows (RingStep, ButtonRowKey). btnFocus
+	// is the button the row would press: findBtnNext while focus is in the
+	// fields, so Enter from a field finds next.
 	focusIdx int
+	btnFocus int
 
 	// status is the readout under the fields: match position, replacement count, or
 	// a regexp compile error. statusErr picks the colour.
@@ -143,7 +146,7 @@ func (d *FindReplaceDialog) show(target *editor.Editor, replace bool) {
 	if cur, _ := d.target.MatchPosition(); replace && cur == 0 && d.target.HasSelection() {
 		d.rescope = true
 	}
-	d.focusIdx = 0
+	d.focusIdx, d.btnFocus = 0, findBtnNext
 	d.syncFocus()
 	d.Show()
 }
@@ -225,24 +228,25 @@ func (d *FindReplaceDialog) fields() []core.Focusable {
 	return []core.Focusable{d.fFind, d.cbCase, d.cbWord, d.cbRegex}
 }
 
-// syncFocus applies focusIdx to the widgets. An index past the last field means
-// a button is focused and no widget is.
+// syncFocus applies focusIdx to the widgets. The button-row index means a
+// button is focused and no widget is.
 func (d *FindReplaceDialog) syncFocus() {
 	for i, f := range d.fields() {
 		f.Focus(i == d.focusIdx)
 	}
 }
 
-// focusCount is the number of Tab stops: every field, then every button.
-func (d *FindReplaceDialog) focusCount() int { return len(d.fields()) + len(d.buttons()) }
+// onButtons reports whether the button row holds focus.
+func (d *FindReplaceDialog) onButtons() bool { return d.focusIdx == len(d.fields()) }
 
-// btnFocus is the index into buttons() of the focused button, or findBtnNext
-// while focus is in the fields (what Enter presses from a text field).
-func (d *FindReplaceDialog) btnFocus() int {
-	if i := d.focusIdx - len(d.fields()); i >= 0 {
-		return i
+// moveFocus steps the ring by dir. Leaving the button row resets it to Find
+// Next, the button Enter presses from a field.
+func (d *FindReplaceDialog) moveFocus(dir int) {
+	d.focusIdx = RingStep(d.fields(), d.focusIdx, dir)
+	if !d.onButtons() {
+		d.btnFocus = findBtnNext
 	}
-	return findBtnNext
+	d.syncFocus()
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +378,7 @@ func (d *FindReplaceDialog) Draw(s tcell.Screen) {
 	core.DrawTextClipped(s, inner.X+1, d.statusY, inner.W-2, st, d.status)
 
 	d.DrawSeparator(s)
-	d.DrawButtons(s, d.buttons(), d.btnFocus())
+	d.DrawButtons(s, d.buttons(), d.btnFocus)
 }
 
 // layout positions the fields for the current mode and records statusY for Draw,
@@ -408,29 +412,15 @@ func (d *FindReplaceDialog) layout() {
 // Input
 // ---------------------------------------------------------------------------
 
-// HandleKey routes keyboard events. Escape closes the dialog but leaves the
-// search active on the editor, so the host's F3 keeps working. F3 / Shift+F3
-// inside the dialog step through matches without closing it.
+// HandleKey routes keyboard events: F3 / Shift+F3 step through matches without
+// closing the dialog, then the focus ring (FieldRingKey on a field,
+// ButtonRowKey on the button row). Escape closes the dialog but leaves the
+// search active on the editor, so the host's F3 keeps working.
 func (d *FindReplaceDialog) HandleKey(ev *tcell.EventKey) bool {
 	if !d.Visible() {
 		return false
 	}
-	switch ev.Key() {
-	case tcell.KeyTab:
-		d.focusIdx = NextFocus(d.focusIdx, d.focusCount())
-		d.syncFocus()
-		return true
-	case tcell.KeyBacktab:
-		d.focusIdx = PrevFocus(d.focusIdx, d.focusCount())
-		d.syncFocus()
-		return true
-	case tcell.KeyEscape:
-		d.Hide()
-		return true
-	case tcell.KeyEnter:
-		d.pressButton(d.btnFocus())
-		return true
-	case tcell.KeyF3:
+	if ev.Key() == tcell.KeyF3 {
 		dir := 1
 		if ev.Modifiers()&tcell.ModShift != 0 {
 			dir = -1
@@ -438,13 +428,11 @@ func (d *FindReplaceDialog) HandleKey(ev *tcell.EventKey) bool {
 		d.doFind(dir)
 		return true
 	}
-
-	if fields := d.fields(); d.focusIdx < len(fields) {
-		if kh, ok := fields[d.focusIdx].(core.KeyHandler); ok {
-			return kh.HandleKey(ev)
-		}
+	press := func() { d.pressButton(d.btnFocus) }
+	if d.onButtons() {
+		return ButtonRowKey(ev, &d.btnFocus, len(d.buttons()), nil, press, d.Hide, d.moveFocus)
 	}
-	return true
+	return FieldRingKey(ev, d.fields()[d.focusIdx], press, d.Hide, d.moveFocus)
 }
 
 // pressButton runs the action of buttons()[i] for the current mode, by
@@ -509,7 +497,7 @@ func (d *FindReplaceDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	}
 
 	if i := d.ButtonClicked(ev, d.buttons()); i >= 0 {
-		d.focusIdx = len(d.fields()) + i
+		d.focusIdx, d.btnFocus = len(d.fields()), i
 		d.syncFocus()
 		d.pressButton(i)
 		return true
