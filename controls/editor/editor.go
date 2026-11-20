@@ -90,6 +90,11 @@ type Editor struct {
 	// and copy (DataGrid's cell-content popup).
 	readOnly bool
 
+	// lineHighlight paints the cursor's line in the palette's GridRowAlt, as an
+	// IDE marks the current line. Off by default: an opt-in for the SQL editor,
+	// leaving read-only views and plain text boxes alone.
+	lineHighlight bool
+
 	// styleScratch is drawHighlighted's per-column style map, reused across calls:
 	// Draw runs on every event and calls drawHighlighted per visible row. Valid only
 	// within one call; nothing may retain it.
@@ -287,6 +292,15 @@ func (e *Editor) SetReadOnly(v bool) { e.readOnly = v }
 
 // ReadOnly reports whether SetReadOnly is in force.
 func (e *Editor) ReadOnly() bool { return e.readOnly }
+
+// SetCurrentLineHighlight paints the background of the cursor's line (every
+// visual row of it in wrap mode) in the palette's GridRowAlt, the grid's
+// alternate-row shade. Selection and search matches still draw over it. Off by
+// default.
+func (e *Editor) SetCurrentLineHighlight(v bool) { e.lineHighlight = v }
+
+// CurrentLineHighlight reports whether SetCurrentLineHighlight is in force.
+func (e *Editor) CurrentLineHighlight() bool { return e.lineHighlight }
 
 // SetBounds positions the editor. The same rect again changes nothing; a new
 // one keeps the scroll inside the content and never moves the cursor or the

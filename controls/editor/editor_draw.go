@@ -62,6 +62,7 @@ func (e *Editor) Draw(s tcell.Screen) {
 			def: bgStyle, sel: selStyle,
 			selStart: selStart, selEnd: selEnd, hasSel: hasSel,
 			matches: e.matchSpansForLine(lineIdx), matchStyle: matchStyle,
+			curLine: e.lineHighlight && lineIdx == e.cursorRow, curLineBg: p.GridRowAlt,
 		}
 		if e.highlight != nil {
 			spec.styles = e.runStyles(e.highlight(e.doc, lineIdx), len(line), bgStyle)
@@ -111,6 +112,12 @@ type lineRow struct {
 	matches    []searchMatch
 	matchStyle tcell.Style
 
+	// curLine marks the cursor's line under SetCurrentLineHighlight: every cell not
+	// selected or matched, past-the-end padding included, takes curLineBg as its
+	// background, keeping the highlighter's foreground.
+	curLine   bool
+	curLineBg tcell.Color
+
 	// matchCur is inMatch's cursor into matches (the first match that could still
 	// cover a rune) and matchPrimed says it has been positioned. Both are
 	// drawLineRow's scratch, so the zero value must mean "not yet primed", else a
@@ -143,7 +150,8 @@ func (r *lineRow) inMatch(i int) bool {
 
 // styleForRune resolves the style of the rune at index i: an active selection
 // wins over a search match, which wins over the highlighter, which wins over the
-// default. i must not decrease across calls on one lineRow; see inMatch.
+// default; on the current line (curLine) the last three take curLineBg as their
+// background. i must not decrease across calls on one lineRow; see inMatch.
 func (r *lineRow) styleForRune(i int) tcell.Style {
 	if r.hasSel && i >= r.selStart && i < r.selEnd {
 		return r.sel
@@ -151,16 +159,19 @@ func (r *lineRow) styleForRune(i int) tcell.Style {
 	if r.inMatch(i) {
 		return r.matchStyle
 	}
-	if r.styles != nil {
+	st := r.def
+	switch {
+	case r.styles != nil:
 		if i < len(r.styles) {
-			return r.styles[i]
+			st = r.styles[i]
 		}
-		return r.def
+	case r.runs != nil:
+		st = styleAt(r.runs, i, r.def)
 	}
-	if r.runs != nil {
-		return styleAt(r.runs, i, r.def)
+	if r.curLine {
+		st = st.Background(r.curLineBg)
 	}
-	return r.def
+	return st
 }
 
 // drawLineRow renders the [fromCol, fromCol+w) terminal-column window of one
@@ -413,6 +424,7 @@ func (e *Editor) drawWrapped(s tcell.Screen, contentX, contentW, gw int, gutterS
 			def: bgStyle, sel: selStyle,
 			selStart: selStart, selEnd: selEnd, hasSel: hasSel,
 			matches: e.matchSpansForLine(vl.row), matchStyle: matchStyle,
+			curLine: e.lineHighlight && vl.row == e.cursorRow, curLineBg: p.GridRowAlt,
 		}
 		if e.highlight != nil {
 			// Runs are scanned per column rather than expanded into a per-rune map:
