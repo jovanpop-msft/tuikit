@@ -65,7 +65,8 @@ tuikit/
 │               panel_manager.go, splitter.go, title_bar.go (DrawTitleBar:
 │               a panel's one-row title, active/inactive, optional
 │               right-aligned cell)
-├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Confirm/TypedConfirm
+├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Message
+│             (styled lines over the host's own buttons)/Confirm/TypedConfirm
 │             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
 │             row, then a button)/Log (read-only newest-first log in a
 │             selectable Editor; Record from any goroutine)/Text (scrollable
@@ -81,7 +82,8 @@ tuikit/
 │               field_gesture.go (FieldGesture: a dialog's drag latch for a
 │               gesture begun in one of its controls), focus_ring.go
 │               (SetFocusIn, NextFocus, RingStep, FieldRingKey,
-│               ButtonRowKey, RingMouse, ClipboardFieldAt,
+│               ButtonRowKey, ButtonsKey, StepButtonWrap, RingMouse,
+│               ClipboardFieldAt,
 │               ForwardReleaseToFocusedField …: the operations over a host
 │               dialog's flat []core.Focusable ring; RingMouse is its whole
 │               HandleMouse, in the one order § Mouse gestures allows)
@@ -259,8 +261,9 @@ cursor on its row, not its index.
 **Display width, not bytes or runes.** `core.DisplayWidth(s)` (via
 `clipperhouse/displaywidth`) is the one answer to "how many columns", handling
 wide CJK and grapheme clusters; `core.DrawText`, `DrawTextClipped`,
-`DrawTextRight`, `Truncate`, `PadRight` build on it. Anything positioned after
-a label uses `core.DisplayWidth(label)`, never `len(label)`, or drawing and
+`DrawTextRight`, `Truncate`, `TruncateLeft` (keeps the tail, for paths),
+`PadRight` build on it. Anything positioned after a label uses
+`core.DisplayWidth(label)`, never `len(label)`, or drawing and
 hit-testing desync. Rune-indexed text (`Editor`, `InputField` cursors,
 selections, wrap segments) converts via `core/runecol.go` only — `RunesWidth`,
 `ColumnOfRune`, `RuneIndexAtColumn`/`ClusterAtColumn`, and `GraphemeAt`,

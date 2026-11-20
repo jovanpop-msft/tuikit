@@ -14,7 +14,8 @@ import (
 // `d.focusable[d.focusIdx]` access for no behavioural gain.
 //
 // They pair with what ModalDialog already draws: DrawButtonsGated paints a
-// button row with some buttons disabled, ButtonRowKey is its keyboard.
+// button row with some buttons disabled, ButtonRowKey is its keyboard (and
+// ButtonsKey the keyboard of a dialog that is nothing but that row).
 
 // SetFocusIn focuses list[i], blurring every other entry, and reports the
 // index that ended up focused. An out-of-range i blurs everything and answers
@@ -168,6 +169,37 @@ func ButtonRowKey(ev *tcell.EventKey, btnFocus *int, n int, disabled []bool, fir
 	return true
 }
 
+// ButtonsKey is the whole keyboard of a dialog that is only a button row — no
+// fields to Tab back to, so ButtonRowKey's leave has nowhere to go: Tab and
+// Right step forward, Backtab and Left back, wrapping at both ends and past a
+// disabled button (StepButtonWrap); Enter fires the focused one; Escape hides.
+// Everything else is swallowed: the dialog is modal.
+//
+// *btnFocus is clamped into the row first, on every key. A row can shrink
+// under the dialog between a draw and the keypress (a progress view's Cancel
+// disappears the moment its task finishes), and an index recorded against the
+// longer row would have fire index past the shorter. With n <= 0 only Escape
+// acts. disabled may be nil or shorter than the row.
+func ButtonsKey(ev *tcell.EventKey, btnFocus *int, n int, disabled []bool, fire, hide func()) bool {
+	if ev.Key() == tcell.KeyEscape {
+		hide()
+		return true
+	}
+	if n <= 0 {
+		return true
+	}
+	*btnFocus = core.Clamp(*btnFocus, 0, n-1)
+	switch ev.Key() {
+	case tcell.KeyTab, tcell.KeyRight:
+		*btnFocus = StepButtonWrap(*btnFocus, +1, n, disabled)
+	case tcell.KeyBacktab, tcell.KeyLeft:
+		*btnFocus = StepButtonWrap(*btnFocus, -1, n, disabled)
+	case tcell.KeyEnter:
+		fire()
+	}
+	return true
+}
+
 // FieldRingKey is the keyboard of a hand-rolled dialog while focus is on one
 // of its fields; ButtonRowKey is the button row's. It is propsheet.Form's
 // order: focused gets every key first, so an open dropdown's list takes the
@@ -225,6 +257,21 @@ func RingStep(fields []core.Focusable, cur, dir int) int {
 // the row. disabled may be nil or shorter than the row.
 func StepButton(i, dir, n int, disabled []bool) int {
 	for j := i + dir; j >= 0 && j < n; j += dir {
+		if j >= len(disabled) || !disabled[j] {
+			return j
+		}
+	}
+	return i
+}
+
+// StepButtonWrap is StepButton on a row that wraps: the next enabled button
+// from i in dir, going round the end, or i when no other button is enabled.
+// It is ButtonsKey's step; ButtonRowKey keeps StepButton, because there the
+// ends of the row are where Tab and Backtab take over. disabled may be nil or
+// shorter than the row.
+func StepButtonWrap(i, dir, n int, disabled []bool) int {
+	for k := 1; k < n; k++ {
+		j := ((i+k*dir)%n + n) % n
 		if j >= len(disabled) || !disabled[j] {
 			return j
 		}

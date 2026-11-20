@@ -207,6 +207,97 @@ func TestButtonRowKey(t *testing.T) {
 	}
 }
 
+func TestStepButtonWrapWrapsBothWaysPastDisabled(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		i, dir, n int
+		disabled  []bool
+		want      int
+	}{
+		{"right wraps to the start", 2, +1, 3, nil, 0},
+		{"left wraps to the end", 0, -1, 3, nil, 2},
+		{"right past disabled across the end", 1, +1, 3, []bool{true, false, true}, 1},
+		{"right wraps past a disabled first", 2, +1, 3, []bool{true}, 1},
+		{"left wraps past a disabled last", 0, -1, 3, []bool{false, false, true}, 1},
+		{"one button stays", 0, +1, 1, nil, 0},
+		{"short disabled enables the rest", 0, +1, 3, []bool{false, true}, 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := StepButtonWrap(tt.i, tt.dir, tt.n, tt.disabled); got != tt.want {
+				t.Errorf("StepButtonWrap(%d, %d, %d, %v) = %d, want %d",
+					tt.i, tt.dir, tt.n, tt.disabled, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestButtonsKey(t *testing.T) {
+	var fired, hidden int
+	btn := 0
+	n := 3
+	disabled := []bool{false, true, false}
+	press := func(ev *tcell.EventKey) {
+		t.Helper()
+		if !ButtonsKey(ev, &btn, n, disabled, func() { fired++ }, func() { hidden++ }) {
+			t.Errorf("key %v was not swallowed", ev.Key())
+		}
+	}
+	for _, step := range []struct {
+		k    tcell.Key
+		want int
+	}{
+		{tcell.KeyTab, 2},     // past disabled 1
+		{tcell.KeyTab, 0},     // wraps
+		{tcell.KeyBacktab, 2}, // wraps back
+		{tcell.KeyLeft, 0},    // past disabled 1
+		{tcell.KeyRight, 2},
+		{tcell.KeyRight, 0},
+	} {
+		press(key(step.k))
+		if btn != step.want {
+			t.Errorf("%v landed on %d, want %d", step.k, btn, step.want)
+		}
+	}
+	press(key(tcell.KeyEnter))
+	press(key(tcell.KeyEscape))
+	if fired != 1 || hidden != 1 {
+		t.Errorf("fired=%d hidden=%d, want 1 each", fired, hidden)
+	}
+
+	// A letter, Up/Down and F1 are swallowed and change nothing.
+	press(tcell.NewEventKey(tcell.KeyRune, "a", tcell.ModNone))
+	press(key(tcell.KeyDown))
+	press(key(tcell.KeyF1))
+	if btn != 0 || fired != 1 || hidden != 1 {
+		t.Error("an unbound key did something on the button row")
+	}
+}
+
+// TestButtonsKeyClampsFocusToAShrunkRow: a progress view loses its Cancel the
+// moment its task finishes, so a focus of 1 recorded while it ran indexes past
+// a one-button row. Enter on a run that completed between the draw and the
+// keypress fired with that index and panicked.
+func TestButtonsKeyClampsFocusToAShrunkRow(t *testing.T) {
+	btn, fired := 1, 0
+	ButtonsKey(key(tcell.KeyEnter), &btn, 1, nil, func() {
+		fired++
+		if btn != 0 {
+			t.Errorf("fire saw btnFocus %d on a one-button row, want 0", btn)
+		}
+	}, func() {})
+	if fired != 1 {
+		t.Errorf("fired %d times, want 1", fired)
+	}
+
+	// An empty row: Escape still hides, nothing else acts.
+	btn, hidden := 0, 0
+	ButtonsKey(key(tcell.KeyEnter), &btn, 0, nil, func() { t.Error("fired on an empty row") }, func() {})
+	ButtonsKey(key(tcell.KeyEscape), &btn, 0, nil, func() {}, func() { hidden++ })
+	if hidden != 1 {
+		t.Error("Escape did not hide on an empty row")
+	}
+}
+
 // fakeField is a text field for the clipboard and release helpers: a
 // core.ClipboardTarget and a core.MouseHandler, with an enabled state, an
 // optional overlay and a HitTest narrower than its Bounds (an InputField's box

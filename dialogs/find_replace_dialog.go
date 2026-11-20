@@ -369,10 +369,9 @@ func (d *FindReplaceDialog) Draw(s tcell.Screen) {
 	d.cbWord.Draw(s)
 	d.cbRegex.Draw(s)
 
-	p := theme.Active()
-	st := tcell.StyleDefault.Background(p.DialogBg).Foreground(p.DialogTextDim)
+	st := theme.StyleDialogDim()
 	if d.statusErr {
-		st = tcell.StyleDefault.Background(p.DialogBg).Foreground(p.DialogWarning)
+		st = theme.StyleDialogWarning()
 	}
 	inner := d.InnerRect()
 	core.DrawTextClipped(s, inner.X+1, d.statusY, inner.W-2, st, d.status)
