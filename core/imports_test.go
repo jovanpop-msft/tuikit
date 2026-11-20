@@ -113,7 +113,7 @@ var tuikitLayers = map[string][]string{
 	"controls/editor": {"core", "theme"},
 	"controls":        {"core", "theme", "controls/editor"},
 	"layout":          {"core", "theme"},
-	"dialogs":         {"core", "theme", "widgets", "controls/editor"},
+	"dialogs":         {"core", "theme", "widgets", "controls/editor", "loop"},
 	"propsheet":       {"core", "theme", "widgets", "dialogs", "controls", "controls/editor"},
 	"tuikittest":      {"core"},
 	"clipboard":       {},

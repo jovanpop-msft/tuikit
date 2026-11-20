@@ -12,7 +12,8 @@
 //   - runner.go — Runner: the background side; Go/GoRepair start a labelled,
 //     recovered goroutine (GoRepair posts a repair before the report), GoOnce
 //     is a single-flight run whose busy latch a panic releases too, Recover
-//     is the bare deferred form, FanOut a bounded pool recovering per item;
+//     is the bare deferred form, FanOut a bounded pool recovering per item,
+//     Tick a spinner's redraw clock that stops when done closes;
 //     Label sets the pprof op label every traceback header then prints
 //
 // It holds the protocol ARCHITECTURE.md § Threading states, written once: the

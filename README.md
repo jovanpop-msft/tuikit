@@ -58,7 +58,8 @@ tuikit/
 │               tests draw into it and read it back),
 │               tabstrip.go (TabStripSegments/TabLabelWidth: the one tab-bar
 │               column layout, shared by draw and hit-test code),
-│               keys.go (NormalizeKey: the Ctrl+letter fold), mouse.go
+│               keys.go (NormalizeKey: the Ctrl+letter fold;
+│               IsCtrlEnter: both Ctrl+Enter encodings), mouse.go
 │               (MouseEventName: "Shift+Button1", tcell's missing
 │               EventMouse.Name)
 ├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each;
@@ -70,7 +71,8 @@ tuikit/
 │               right-aligned cell)
 ├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Message
 │             (styled lines over the host's own buttons)/Confirm/TypedConfirm
-│             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
+│             (retype-to-confirm)/Prompt (one-line input)/Progress (Run: a
+│             worker's lifecycle behind it, on the host's loop.Runner)/List (pick a
 │             row, then a button)/Log (read-only newest-first log in a
 │             selectable Editor; Record from any goroutine)/Text (scrollable
 │             reference text, hanging-indent wrap)/FindReplace (Find and
@@ -162,7 +164,8 @@ tuikit/
 │               runner.go (Runner: the background side — Go/GoRepair/Recover
 │               start or guard a goroutine so a panic is reported, not fatal;
 │               GoOnce a single-flight run whose latch a panic releases;
-│               FanOut is a bounded pool recovering per item).
+│               FanOut is a bounded pool recovering per item; Tick a
+│               spinner's redraw clock, stopped by closing done).
 │               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
@@ -202,7 +205,7 @@ charts           —
 controls/editor  —
 controls         → controls/editor
 layout           —
-dialogs          → widgets, controls/editor
+dialogs          → widgets, controls/editor, loop
 propsheet        → dialogs, controls, controls/editor, widgets
 clipboard        imports no tuikit package, not even core/theme (tcell only)
 loop             imports no tuikit package, not even core/theme (tcell only)
@@ -222,7 +225,10 @@ examples/*       → whatever they demonstrate; nothing imports them
   from the system clipboard with this package.
 - **loop** is outside the widget graph too: no widget posts, wakes or starts a goroutine. It is
   host plumbing, here because § Threading dictates the protocol and every
-  tcell v3 host otherwise rewrites its bug-dense part.
+  tcell v3 host otherwise rewrites its bug-dense part. Its one tuikit
+  importer is `dialogs`, for `ProgressDialog.Run`, which takes the host's
+  `Runner` and `Poster` as arguments, as `clipboard.Dispatcher` takes its `Go`
+  and `Post`.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`

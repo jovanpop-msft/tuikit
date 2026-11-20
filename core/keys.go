@@ -36,3 +36,21 @@ func NormalizeKey(ev *tcell.EventKey) *tcell.EventKey {
 	}
 	return tcell.NewEventKey(tcell.KeyCtrlA+tcell.Key(r-'a'), "", ev.Modifiers())
 }
+
+// IsCtrlEnter reports whether ev is Ctrl+Enter in either encoding a terminal
+// can deliver. A modern keyboard protocol (kitty, xterm's modifyOtherKeys)
+// reports KeyEnter with ModCtrl; every other terminal (xfce4-terminal and the
+// VTE family among them) sends a bare LF, 0x0A, which tcell decodes as
+// KeyCtrlJ (plain Enter being CR, 0x0D). A host that matches only the first
+// finds Ctrl+Enter dead on an ordinary terminal, with no error to point at
+// the cause.
+//
+// The price is that Ctrl+J reads as Ctrl+Enter, so a host binding both must
+// test Ctrl+J first. That is also why this is not folded into NormalizeKey:
+// rewriting every KeyCtrlJ would break hosts that bind Ctrl+J.
+func IsCtrlEnter(ev *tcell.EventKey) bool {
+	if ev.Key() == tcell.KeyCtrlJ {
+		return true
+	}
+	return ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModCtrl != 0
+}

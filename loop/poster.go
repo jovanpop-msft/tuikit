@@ -83,7 +83,7 @@ func (p *Poster) Queue(fn func()) {
 
 // Wake nudges the event loop to run one more iteration, which drains the queue
 // and redraws. Call it from a background goroutine after Queue, or alone for a
-// redraw clock with nothing to post (a spinner's tick). From the UI goroutine
+// redraw clock with nothing to post (a spinner's tick: Runner.Tick). From the UI goroutine
 // it is pointless at best: the loop can't read EventQ() mid-dispatch.
 //
 // A no-op without a screen, after Close, or while an earlier wake has not yet
