@@ -45,7 +45,8 @@ tuikit/
 │               ClipboardFocuser — the Copy/Cut/Paste
 │               contract every widget package shares),
 │               control.go (Focusable/Enabler/Bounded/KeyHandler/
-│               MouseHandler/Overlay — the control contract hosts assert on),
+│               MouseHandler/Overlay — the control contract hosts assert on;
+│               OpenOverlay: which of a host's children has its overlay open),
 │               gesture.go (Gesture: which zone of a host claimed the held
 │               Button1 press, routed to until release),
 │               click.go (ClickTracker: pairs fresh presses into a

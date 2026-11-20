@@ -198,7 +198,8 @@ A widget whose open state floats outside its rect — `DropDown`'s list,
   overlay from the method that draws the grid exposes its own `DrawOverlay`
   for *its* host to call last (`propsheet.GridRow` does).
 - offers every event to an `OverlayActive()` widget first in its own
-  `HandleKey`/`HandleMouse` — the wheel included — before positional routing.
+  `HandleKey`/`HandleMouse` — the wheel included — before positional routing
+  (`core.OpenOverlay(children...)` finds it among several).
   A `DropDown`'s open list is clamped to the *screen*, not the dialog, so a
   dialog routing one by hand offers it every event before
   `ConsumeOutsideClick`.
