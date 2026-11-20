@@ -72,6 +72,43 @@ func (r *Runner) GoRepair(what string, repair, fn func()) {
 	}()
 }
 
+// GoOnce is GoRepair for a single-flight action — a button that must not start
+// a second run while the first is out — with the busy latch kept here, so the
+// one rule a host writing it by hand forgets cannot be forgotten: a panic must
+// release the latch too, or the button refuses every later click for the
+// object's lifetime.
+//
+// If *busy is set, GoOnce does nothing and returns false. Otherwise it sets
+// *busy and runs fn on a new goroutine labelled with what. fn returns the
+// callback for its result (nil for none); GoOnce posts one callback to the UI
+// goroutine that clears *busy and then runs it. On a panic in fn the posted
+// repair clears *busy and the panic goes to Report, as for GoRepair. Either
+// way the latch is released on the UI goroutine, in the same callback that
+// reports the outcome, so busy is a plain bool: call GoOnce from the UI
+// goroutine only, with Post set (without it the latch is never released).
+//
+// What fn needs from the UI goroutine — a context, the object it writes into
+// — it captures before GoOnce is called; whether the result is still wanted
+// when it arrives (the dialog closed, a newer showing) is the callback's to
+// check.
+func (r *Runner) GoOnce(busy *bool, what string, fn func() (done func())) bool {
+	if *busy {
+		return false
+	}
+	*busy = true
+	release := func() { *busy = false }
+	r.GoRepair(what, release, func() {
+		done := fn()
+		r.Post(func() {
+			release()
+			if done != nil {
+				done()
+			}
+		})
+	})
+	return true
+}
+
 // Recover is the bare deferred recovery, for a goroutine the host starts
 // itself: `defer r.Recover("what this was doing")`. It must be deferred
 // directly — recover only stops a panic when called by the deferred function

@@ -214,3 +214,72 @@ func TestLabelSurvivesTheUnwind(t *testing.T) {
 		t.Errorf("traceback header = %q, want the label", header)
 	}
 }
+
+// GoOnce refuses a second run while the first is out, and the callback that
+// reports the result is the one that releases the latch.
+func TestGoOnceLatchesUntilTheResultIsPosted(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rec := &recorder{}
+		r := rec.runner(0)
+		busy, runs, got := false, 0, ""
+		start := func() bool {
+			return r.GoOnce(&busy, "searching", func() func() {
+				runs++
+				return func() { got = "result" }
+			})
+		}
+
+		if !start() || !busy {
+			t.Fatalf("first GoOnce: started=false or busy=%v", busy)
+		}
+		if start() {
+			t.Fatal("second GoOnce while the first is out started a run")
+		}
+		synctest.Wait()
+		if runs != 1 || len(rec.posted) != 1 || !busy {
+			t.Fatalf("runs=%d posted=%d busy=%v, want 1, 1, still busy until the callback runs", runs, len(rec.posted), busy)
+		}
+		rec.posted[0]()
+		if busy || got != "result" {
+			t.Fatalf("after the callback: busy=%v got=%q, want released and result delivered", busy, got)
+		}
+		if !start() {
+			t.Fatal("GoOnce after the release did not start")
+		}
+		synctest.Wait()
+	})
+}
+
+// A nil callback still releases the latch.
+func TestGoOnceNilCallbackReleases(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rec := &recorder{}
+		r := rec.runner(0)
+		busy := false
+		r.GoOnce(&busy, "x", func() func() { return nil })
+		synctest.Wait()
+		rec.posted[0]()
+		if busy {
+			t.Fatal("busy still set after a nil-callback run finished")
+		}
+	})
+}
+
+// A panic in fn releases the latch through the repair (posted before the
+// report, as for GoRepair) — without it the button refuses every later click.
+func TestGoOncePanicReleasesTheLatch(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rec := &recorder{}
+		r := rec.runner(0)
+		busy := false
+		r.GoOnce(&busy, "rebuilding", func() func() { panic("boom") })
+		synctest.Wait()
+		if got := rec.snapshot(); len(got) != 2 || got[0] != "post" || got[1] != "report rebuilding" {
+			t.Fatalf("events = %q, want [post, report rebuilding]", got)
+		}
+		rec.posted[0]()
+		if busy {
+			t.Fatal("busy still set after the panic's repair ran")
+		}
+	})
+}

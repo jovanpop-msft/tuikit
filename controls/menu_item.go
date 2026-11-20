@@ -47,11 +47,45 @@ type MenuItem struct {
 	// items from SetRefresh after the action, a MenuBar takes them from the
 	// host's SetMenus. A KeepOpen item that opens a submenu ignores the flag.
 	KeepOpen bool
+
+	// Checked, when non-nil, makes the item an on/off toggle: the menu box
+	// draws MenuTick in a mark column before the label while it answers true,
+	// and a blank there while false. It is read at draw time, so the label
+	// stays fixed and the menu shows the state without the host rebuilding
+	// its items after each flip. Any toggle in a box reserves the column for
+	// every row of that box, keeping the labels aligned and the box the same
+	// width in both states; a box with no toggle has no column.
+	Checked func() bool
 }
+
+// MenuTick is the mark a Checked menu item draws while on. It is lighter than
+// CheckOn/CheckOff by design: a menu toggle reads as a check column, as in
+// desktop menus, not as a checklist row.
+const MenuTick = "✓"
+
+// menuMarkWidth is the mark column a box with a Checked item reserves: the
+// tick and one column of space before the label.
+const menuMarkWidth = 2
 
 // enabled reports whether it can be selected or activated right now.
 func (it MenuItem) enabled() bool {
 	return it.Enabled == nil || it.Enabled()
+}
+
+// checked reports whether a toggle item is on; false for a non-toggle.
+func (it MenuItem) checked() bool {
+	return it.Checked != nil && it.Checked()
+}
+
+// menuMarkColumn is the width of the mark column items need: menuMarkWidth
+// when any of them is a toggle, else 0.
+func menuMarkColumn(items []MenuItem) int {
+	for _, it := range items {
+		if it.Checked != nil && !it.Divider {
+			return menuMarkWidth
+		}
+	}
+	return 0
 }
 
 // Menu is a top-level menu header with its items.
@@ -159,8 +193,10 @@ func menuRowStyles(enabled, selected bool) (label, suffix tcell.Style) {
 
 // drawMenuRow renders one row of a menu box at (x,y) spanning w columns: a
 // divider line, or a label plus right-aligned suffix styled per menuRowStyles,
-// from the state menuBox.measure evaluated for this draw.
-func drawMenuRow(s tcell.Screen, x, y, w int, item MenuItem, st menuRowState, selected bool, borderStyle tcell.Style) {
+// from the state menuBox.measure evaluated for this draw. mark is the box's
+// mark column width (menuMarkColumn): the label starts after it, and a
+// checked toggle draws MenuTick in it.
+func drawMenuRow(s tcell.Screen, x, y, w, mark int, item MenuItem, st menuRowState, selected bool, borderStyle tcell.Style) {
 	if item.Divider {
 		for cx := x + 1; cx < x+w-1; cx++ {
 			core.PutRune(s, cx, y, '─', borderStyle)
@@ -171,7 +207,10 @@ func drawMenuRow(s tcell.Screen, x, y, w int, item MenuItem, st menuRowState, se
 	}
 	labelStyle, suffixStyle := menuRowStyles(st.enabled, selected)
 	core.FillRect(s, core.Rect{X: x + 1, Y: y, W: w - 2, H: 1}, ' ', labelStyle)
-	core.DrawTextClipped(s, x+2, y, w-4, labelStyle, item.Label)
+	if st.checked && mark > 0 {
+		core.DrawTextClipped(s, x+2, y, w-4, labelStyle, MenuTick)
+	}
+	core.DrawTextClipped(s, x+2+mark, y, w-4-mark, labelStyle, item.Label)
 	if st.suffix != "" {
 		sx := x + w - 1 - core.DisplayWidth(st.suffix) - 1
 		core.DrawText(s, sx, y, suffixStyle, st.suffix)

@@ -33,7 +33,8 @@ labels the goroutine (pprof `op`, which the traceback header prints) and hands
 a recovered panic, with the stack captured where it happened, to the host's
 `Report`; `GoRepair` first posts a repair for UI state the operation latched
 (a dimmed toolbar, a "loading" flag) — before the report, so the status bar's
-last word is the panic; `FanOut` is a bounded pool that recovers each item on
+last word is the panic; `GoOnce` is `GoRepair` for a single-flight
+button, owning its busy latch so a panic releases it too; `FanOut` is a bounded pool that recovers each item on
 its own and fills its queue before any worker starts, so a dead worker cannot
 block the producer (`loop/runner_test.go`). Like `Poster`, it is plumbing the
 host calls, not a control: the rule below still holds.

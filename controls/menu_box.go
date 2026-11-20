@@ -36,11 +36,16 @@ type menuBox struct {
 	// once per item per draw, since gossms's Enabled predicates run queries of
 	// their own state and the width, the styles and the suffix all need them.
 	rows []menuRowState
+
+	// mark is the mark column width measure found (menuMarkColumn), which
+	// paint passes to every row.
+	mark int
 }
 
 // menuRowState is one item's per-draw evaluation (menuBox.rows).
 type menuRowState struct {
 	enabled bool
+	checked bool
 	suffix  string
 }
 
@@ -48,21 +53,23 @@ type menuRowState struct {
 // width that fits each label and suffix, floored at minW.
 func (b *menuBox) measure(minW int) int {
 	b.rows = slices.Grow(b.rows[:0], len(b.items))
+	b.mark = menuMarkColumn(b.items)
 	w := minW
 	for _, it := range b.items {
-		st := menuRowState{enabled: it.enabled()}
+		st := menuRowState{enabled: it.enabled(), checked: it.checked()}
 		st.suffix = rowSuffix(it, st.enabled)
 		b.rows = append(b.rows, st)
-		w = max(w, menuRowWidth(it.Label, st.suffix))
+		w = max(w, menuRowWidth(b.mark, it.Label, st.suffix))
 	}
 	return w
 }
 
 // liveWidth is measure without the cache, for a rect seeded before any draw.
 func (b *menuBox) liveWidth(minW int) int {
+	mark := menuMarkColumn(b.items)
 	w := minW
 	for _, it := range b.items {
-		w = max(w, menuRowWidth(it.Label, menuRowSuffix(it)))
+		w = max(w, menuRowWidth(mark, it.Label, menuRowSuffix(it)))
 	}
 	return w
 }
@@ -70,9 +77,10 @@ func (b *menuBox) liveWidth(minW int) int {
 // menuRowWidth is the box width one row needs. +6: 2 columns of border/inset
 // padding plus a guaranteed 2-column gap between label and suffix for
 // whichever item ends up defining the width; without the margin that widest
-// item's label and shortcut land flush against each other.
-func menuRowWidth(label, suffix string) int {
-	return core.DisplayWidth(label) + core.DisplayWidth(suffix) + 6
+// item's label and shortcut land flush against each other. mark is the box's
+// mark column, which every row carries whether or not it is a toggle.
+func menuRowWidth(mark int, label, suffix string) int {
+	return mark + core.DisplayWidth(label) + core.DisplayWidth(suffix) + 6
 }
 
 // place sets rect from where the host wants the box, clamped to the screen on
@@ -110,7 +118,7 @@ func (b *menuBox) paint(s tcell.Screen) {
 		if item >= len(b.items) {
 			break
 		}
-		drawMenuRow(s, b.rect.X, b.rect.Y+1+i, b.rect.W, b.items[item], b.rows[item], item == b.hover, borderStyle)
+		drawMenuRow(s, b.rect.X, b.rect.Y+1+i, b.rect.W, b.mark, b.items[item], b.rows[item], item == b.hover, borderStyle)
 	}
 	drawMenuScrollMarks(s, b.rect, b.top, len(b.items), rows, borderStyle)
 }

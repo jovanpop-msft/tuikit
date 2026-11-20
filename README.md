@@ -93,7 +93,8 @@ tuikit/
 │               field_ring.go (FieldRing: such a dialog's focus/button
 │               state and its Key/Mouse/clipboard wiring in one value)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
-│             — menu_bar.go, context_menu.go, menu_item.go (shared types),
+│             — menu_bar.go, context_menu.go, menu_item.go (shared types;
+│               MenuItem.Checked: a toggle drawn with MenuTick at draw time),
 │               clipboard_menu.go (ClipboardMenuItems: the standard
 │               Cut/Copy/Paste/Select All right-click menu),
 │               choice_items.go (ChoiceItems: a pick-one selector's menu,
@@ -103,7 +104,8 @@ tuikit/
 │               redraws them in place),
 │               menu_box.go (one box per menu level, root and submenus:
 │               draw, scroll, hit-test, keys for both hosts),
-│               toolbar.go, tool_row.go (a panel's text toolbar: layout,
+│               toolbar.go (ToolbarButton.On: a toggle painted selected
+│               while on, at a fixed width), tool_row.go (a panel's text toolbar: layout,
 │               hit-test, "More ▾"; drawn by the host), tab_bar.go (TabBar:
 │               a one-row strip of plain tabs plus an optional right-aligned
 │               cell, draw and hit-test over TabStripSegments), treeview.go (with an
@@ -159,6 +161,7 @@ tuikit/
 │               cancels the run in flight, Done drops a stale result),
 │               runner.go (Runner: the background side — Go/GoRepair/Recover
 │               start or guard a goroutine so a panic is reported, not fatal;
+│               GoOnce a single-flight run whose latch a panic releases;
 │               FanOut is a bounded pool recovering per item).
 │               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
