@@ -156,6 +156,38 @@ func TestFormatThousands(t *testing.T) {
 	}
 }
 
+func TestFormatBytes(t *testing.T) {
+	cases := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0 B"},
+		{500, "500 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1048576, "1.0 MB"},
+		{40 * 1024 * 1024, "40.0 MB"},
+		{5 * 1024 * 1024 * 1024, "5.0 GB"},
+		// The unit comes from the rounded value: one byte short of a unit
+		// boundary is "1.0 MB", never "1024.0 KB".
+		{1<<20 - 1, "1.0 MB"},
+		{1<<30 - 1, "1.0 GB"},
+		{1<<50 - 1, "1.0 PB"},
+		{1 << 50, "1.0 PB"},
+		{2 << 50, "2.0 PB"},
+		// Past TB: a sparse 2 PiB file once indexed past "KMGT" and panicked.
+		{1 << 60, "1.0 EB"},
+		{math.MaxInt64, "8.0 EB"},
+		{-1, "-1 B"},
+	}
+	for _, c := range cases {
+		if got := FormatBytes(c.n); got != c.want {
+			t.Errorf("FormatBytes(%d) = %q, want %q", c.n, got, c.want)
+		}
+	}
+}
+
 func TestWrapText(t *testing.T) {
 	cases := []struct {
 		name string

@@ -33,7 +33,9 @@ tuikit/
 ├── theme/      Colour palette + derived tcell.Style helpers — palette.go, styles.go
 ├── core/       Rect geometry, drawing primitives, string/int helpers
 │             — geometry.go (Rect, SplitColumns: equal columns with a
-│               gutter), screen.go, drawing.go, strutil.go, mathutil.go,
+│               gutter), screen.go, drawing.go, strutil.go (width,
+│               truncate, wrap, pad; FormatThousands; FormatBytes: a
+│               binary-unit size, unit chosen after rounding), mathutil.go,
 │               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
 │               both scrollbars and their drag latches),
 │               linepane.go (LinePane: a read-only line pane's scroll

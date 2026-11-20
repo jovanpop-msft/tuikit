@@ -1,6 +1,7 @@
 package core
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -412,6 +413,29 @@ func FormatThousands(n int64) string {
 		sb.WriteByte(digits[i])
 	}
 	return sb.String()
+}
+
+// FormatBytes renders n bytes with a binary unit and one decimal ("5.8 GB"),
+// or as "%d B" below 1 KiB.
+//
+// The units run to EB because an int64 tops out just below 8 EiB, and a file
+// that large is real: a sparse file takes no disk space, so `truncate -s 2P`
+// makes one in an instant. With "KMGT" alone, 1 PiB indexed past the end and
+// panicked inside the file dialog's Draw. The unit is chosen from the rounded
+// value, so 1 MiB − 1 reads "1.0 MB", not "1024.0 KB". A negative size (a
+// FileSystem reporting garbage) is left as it is and prints e.g. "-1 B".
+func FormatBytes(n int64) string {
+	const unit = 1024
+	const units = "KMGTPE"
+	if n < unit {
+		return strconv.FormatInt(n, 10) + " B"
+	}
+	v, exp := float64(n)/unit, 0
+	for math.Round(v*10)/10 >= unit && exp < len(units)-1 {
+		v /= unit
+		exp++
+	}
+	return strconv.FormatFloat(v, 'f', 1, 64) + " " + units[exp:exp+1] + "B"
 }
 
 // EvRune extracts the first rune from a tcell v3 EventKey (via Str()), for
