@@ -155,6 +155,25 @@ func (tr *ToolRow) CellAt(mx, my int) int {
 	return -1
 }
 
+// MenuAnchor is where a popup for cell i (i < 0: the More cell) drops: one row
+// below the cell's left edge, or one row below fallback's top-left when the cell
+// is hidden (zero Rect) or i is past the row. A host passes its own rect as
+// fallback, so a menu reached by key binding for a cell folded into More still
+// opens inside the panel rather than at the screen origin.
+func (tr *ToolRow) MenuAnchor(i int, fallback core.Rect) (x, y int) {
+	var r core.Rect
+	switch {
+	case i < 0:
+		r = tr.More.Rect
+	case i < len(tr.Cells):
+		r = tr.Cells[i].Rect
+	}
+	if r.IsZero() {
+		r = fallback
+	}
+	return r.X, r.Y + 1
+}
+
 // OverflowItems builds the menu behind More: one entry per hidden cell, each
 // carrying the gate its cell would have — and its reason as the item's Note,
 // which a MenuItem shows precisely while it is disabled, so a withheld action

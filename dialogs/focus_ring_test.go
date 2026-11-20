@@ -428,3 +428,31 @@ func TestFieldRingKeyOffersTheWidgetFirst(t *testing.T) {
 		t.Fatalf("ring acted on consumed keys: moves=%v fired=%d hid=%d", moved, fired, hid)
 	}
 }
+
+// blurCounter counts Focus(false) calls, which a DropDown answers by closing
+// its list.
+type blurCounter struct {
+	fakeFocusable
+	blurs int
+}
+
+func (b *blurCounter) Focus(on bool) {
+	if !on {
+		b.blurs++
+	}
+	b.fakeFocusable.Focus(on)
+}
+
+// SetFocusIn must not blur the entry it is focusing: a click that opened a
+// drop-down's list and then focused the drop-down closed the list again.
+func TestSetFocusInNeverBlursItsTarget(t *testing.T) {
+	target, other := &blurCounter{}, &blurCounter{}
+	list := []core.Focusable{other, target}
+	SetFocusIn(list, 1, 0)
+	if target.blurs != 0 {
+		t.Errorf("the target was blurred %d times on its way to focus", target.blurs)
+	}
+	if other.blurs != 1 || !target.focused {
+		t.Error("SetFocusIn no longer blurs the others and focuses the target")
+	}
+}

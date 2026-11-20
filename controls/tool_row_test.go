@@ -35,6 +35,39 @@ func TestToolRowPlacesEveryCellThatFits(t *testing.T) {
 	}
 }
 
+// TestToolRowMenuAnchorDropsBelowTheCellOrTheFallback: a shown cell and More
+// anchor one row under their left edge; a hidden cell, an index past the row,
+// and More when nothing overflowed all fall back to the host's rect, so a menu
+// never opens at the screen origin.
+func TestToolRowMenuAnchorDropsBelowTheCellOrTheFallback(t *testing.T) {
+	tr := newTestToolRow("Refresh", "A much longer label", "B")
+	tr.Layout(core.Rect{X: 5, Y: 2, W: 30, H: 1}, "")
+	if !slices.Equal(tr.Hidden, []int{1, 2}) || tr.More.Rect.IsZero() {
+		t.Fatalf("layout: hidden %v, More %+v; want [1 2] behind More", tr.Hidden, tr.More.Rect)
+	}
+	fb := core.Rect{X: 40, Y: 9, W: 20, H: 10}
+	for _, c := range []struct {
+		name   string
+		i      int
+		wx, wy int
+	}{
+		{"shown cell", 0, tr.Cells[0].Rect.X, 3},
+		{"More", -1, tr.More.Rect.X, 3},
+		{"hidden cell", 1, 40, 10},
+		{"past the row", 7, 40, 10},
+	} {
+		if x, y := tr.MenuAnchor(c.i, fb); x != c.wx || y != c.wy {
+			t.Errorf("%s: anchor (%d,%d), want (%d,%d)", c.name, x, y, c.wx, c.wy)
+		}
+	}
+
+	tr = newTestToolRow("A")
+	tr.Layout(core.Rect{X: 5, Y: 2, W: 30, H: 1}, "")
+	if x, y := tr.MenuAnchor(-1, fb); x != 40 || y != 10 {
+		t.Errorf("More with nothing hidden: anchor (%d,%d), want the fallback (40,10)", x, y)
+	}
+}
+
 // TestToolRowCollapsesTheTailIntoMore: what does not fit is the row's tail,
 // and More is placed inside the row after the cells that stayed.
 func TestToolRowCollapsesTheTailIntoMore(t *testing.T) {

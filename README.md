@@ -81,9 +81,10 @@ tuikit/
 │               field_gesture.go (FieldGesture: a dialog's drag latch for a
 │               gesture begun in one of its controls), focus_ring.go
 │               (SetFocusIn, NextFocus, RingStep, FieldRingKey,
-│               ButtonRowKey, ClipboardFieldAt,
+│               ButtonRowKey, RingMouse, ClipboardFieldAt,
 │               ForwardReleaseToFocusedField …: the operations over a host
-│               dialog's flat []core.Focusable ring)
+│               dialog's flat []core.Focusable ring; RingMouse is its whole
+│               HandleMouse, in the one order § Mouse gestures allows)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types),
 │               clipboard_menu.go (ClipboardMenuItems: the standard

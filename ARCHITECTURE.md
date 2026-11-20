@@ -170,6 +170,16 @@ copies dragged to the button row and pressed it — accepting a rename or a
 typed confirmation. `TestFileDialogDragOutOfPathFieldKeepsExtending` fails on
 a mutation of any of the three main calls.
 
+A dialog whose whole surface is a flat focus ring (fields, checkboxes,
+drop-downs, a button row) does not place these calls itself:
+`dialogs.RingMouse` is its `HandleMouse`, `FieldRingKey`/`ButtonRowKey` its
+keyboard. It fixes the order — `TrackPress`; on release the latch-bearing
+members and `Release`; an open drop-down's first refusal; `ConsumeOutsideClick`;
+`ForwardReleaseToFocusedField`; `Replay`; buttons; `Claim` on a drag-starting
+member; the rest — which five hand-rolled copies had in five variants.
+`TestRingMouse` has one subtest per step. A dialog with tabs, a scrollable
+pane or a mode keeps its own `HandleMouse`.
+
 ### Not every mouse event draws
 
 A host may skip the frame after motion-only events while more are queued (a

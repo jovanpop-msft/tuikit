@@ -467,72 +467,15 @@ func (d *FindReplaceDialog) HandleMouse(ev *tcell.EventMouse) bool {
 	if !d.Visible() {
 		return false
 	}
-	// A release must reach every latch-bearing widget even when it lands outside
-	// the dialog, or the widget's next press is swallowed as a continuation of the
-	// stale drag. Each returns false on ButtonNone, so this only resets latches.
-	if ev.Buttons() == tcell.ButtonNone {
-		for _, cb := range d.checkboxes() {
-			cb.HandleMouse(ev)
-		}
-		// End a text-selection drag in the field that claimed the press, wherever the
-		// release landed. Before ConsumeOutsideClick, which returns early on an outside
-		// release and would strand the latch.
-		d.drag.Release(ev)
-	}
-	if d.ConsumeOutsideClick(ev) {
-		return true
-	}
-	if ev.Buttons() == tcell.ButtonNone {
-		return true
-	}
-	if ev.Buttons() != tcell.Button1 {
-		return false
-	}
-
-	// The gesture belongs to whichever field claimed its press, so motion is
-	// replayed there without hit-testing, which would stop a selection extending the
-	// moment the pointer left the field's rect.
-	if d.drag.Replay(ev) {
-		return true
-	}
-
-	if i := d.ButtonClicked(ev, d.buttons()); i >= 0 {
-		d.focusIdx, d.btnFocus = len(d.fields()), i
-		d.syncFocus()
-		d.pressButton(i)
-		return true
-	}
-	for _, cb := range d.checkboxes() {
-		if cb.HandleMouse(ev) {
-			d.focusWidget(cb)
-			return true
-		}
-	}
-	mx, my := ev.Position()
-	for _, f := range d.inputFields() {
-		if f.HitTest(mx, my) {
-			d.focusWidget(f)
-			d.drag.Claim(f, ev)
-			return true
-		}
-	}
-	return true
-}
-
-// checkboxes and inputFields are the current mode's widgets by concrete type,
-// for the mouse routing above.
-func (d *FindReplaceDialog) checkboxes() []*widgets.CheckBox {
-	if d.replaceMode {
-		return []*widgets.CheckBox{d.cbCase, d.cbWord, d.cbRegex, d.cbSel}
-	}
-	return []*widgets.CheckBox{d.cbCase, d.cbWord, d.cbRegex}
-}
-
-func (d *FindReplaceDialog) inputFields() []*widgets.InputField {
-	if d.replaceMode {
-		return []*widgets.InputField{d.fFind, d.fReplace}
-	}
-	return []*widgets.InputField{d.fFind}
+	return RingMouse(ev, &d.ModalDialog, &d.drag, d.fields(), d.focusIdx, d.buttons(),
+		func(i int) {
+			d.focusIdx = i
+			d.syncFocus()
+		},
+		func(btn int) {
+			d.btnFocus = btn
+			d.pressButton(btn)
+		})
 }
 
 // focusWidget moves the Tab cursor onto w, so a clicked widget becomes the
