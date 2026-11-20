@@ -1,7 +1,7 @@
 // Package dialogs provides the ModalDialog base type and generic re-usable dialog
 // implementations (AlertDialog, ConfirmDialog, TypedConfirmDialog, PromptDialog,
 // ProgressDialog, PropertiesDialog, ListDialog, LogDialog, TextDialog,
-// FileDialog).
+// FindReplaceDialog, KeyDiagnosticsDialog, FileDialog).
 //
 // Every dialog embeds ModalDialog which:
 //   - Fades the underlying UI in place (keeping it visible) before its own box
@@ -28,6 +28,10 @@
 //   - list_dialog.go        — ListDialog (pick a row of a live list, then a button)
 //   - log_dialog.go         — LogDialog (read-only newest-first log, selectable)
 //   - text_dialog.go        — TextDialog (scrollable reference text, hanging wrap)
+//   - find_replace_dialog.go — FindReplaceDialog (Find/Replace over an
+//     editor.Editor; MatchStatus, the match readout a host's F3 shares)
+//   - key_diagnostics_dialog.go — KeyDiagnosticsDialog (a LogDialog tracing the
+//     key and mouse events tcell decodes; the host feeds it and owns Copy)
 //   - file_dialog.go        — FileDialog (Open/Save file picker); split across
 //     file_dialog_draw.go (rendering), file_dialog_input.go (key/mouse handling)
 //     and file_dialog_complete.go (path completion)

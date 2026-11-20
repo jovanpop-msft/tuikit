@@ -54,3 +54,61 @@ func TestRectIsZero(t *testing.T) {
 		t.Error("a rect with nonzero W/H must not report IsZero() == true")
 	}
 }
+
+// Columns span the rect exactly, gutters are honoured, and the last column
+// takes the remainder rather than leaving dead cells on the right.
+func TestSplitColumnsSpansRect(t *testing.T) {
+	r := Rect{X: 5, Y: 2, W: 100, H: 4}
+	cols := SplitColumns(r, 3, 1, 24)
+	if len(cols) != 3 {
+		t.Fatalf("len = %d, want 3", len(cols))
+	}
+	if cols[0].X != r.X || cols[2].Right() != r.Right() {
+		t.Errorf("columns %+v don't span %+v", cols, r)
+	}
+	for i := 1; i < len(cols); i++ {
+		if gap := cols[i].X - cols[i-1].Right(); gap != 1 {
+			t.Errorf("gap %d..%d = %d, want 1", i-1, i, gap)
+		}
+	}
+	if cols[0].W != 32 || cols[1].W != 32 || cols[2].W != 34 {
+		t.Errorf("widths = %d,%d,%d, want 32,32,34", cols[0].W, cols[1].W, cols[2].W)
+	}
+	for _, c := range cols {
+		if c.Y != r.Y || c.H != r.H {
+			t.Errorf("column %+v doesn't keep the rect's rows", c)
+		}
+	}
+}
+
+// Fewer columns come back when n won't fit at minW, counting the gutters;
+// none at all when even one won't.
+func TestSplitColumnsFitsWhatFits(t *testing.T) {
+	cases := []struct {
+		w, n, want int
+	}{
+		{2*24 + 1, 2, 2}, // exactly two minimum columns and a gutter
+		{2 * 24, 2, 1},   // one short: the gutter counts
+		{3*24 + 2, 3, 3},
+		{3*24 + 1, 3, 2},
+		{23, 2, 0},
+		{500, 3, 3}, // never more than asked
+	}
+	for _, c := range cases {
+		got := SplitColumns(Rect{W: c.w, H: 1}, c.n, 1, 24)
+		if len(got) != c.want {
+			t.Errorf("SplitColumns(W=%d, n=%d) = %d columns, want %d", c.w, c.n, len(got), c.want)
+		}
+		for _, col := range got {
+			if col.W < 24 {
+				t.Errorf("SplitColumns(W=%d, n=%d) column %+v below minW", c.w, c.n, col)
+			}
+		}
+	}
+	if got := SplitColumns(Rect{W: 100, H: 0}, 2, 1, 24); got != nil {
+		t.Errorf("empty rect = %+v, want nil", got)
+	}
+	if got := SplitColumns(Rect{W: 100, H: 1}, 0, 1, 24); got != nil {
+		t.Errorf("n=0 = %+v, want nil", got)
+	}
+}

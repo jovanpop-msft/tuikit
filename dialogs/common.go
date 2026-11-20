@@ -30,6 +30,21 @@ var Strings = struct {
 	NameCol, SizeCol, ModCol string
 	DirSize, Listing         string
 	PropertyCol, ValueCol    string // PropertiesDialog's column headers
+
+	// FindReplaceDialog: titles, field and option labels, the buttons Close
+	// doesn't cover, and its status line — MatchCount (%d matches), MatchAt
+	// (match %d of %d, line %d, col %d; also MatchStatus), NoMatches (%q the
+	// term), Replaced (%d replacements), InvalidRegex (%s the compile error).
+	FindTitle, ReplaceTitle                                       string
+	FindWhat, ReplaceWith                                         string
+	MatchCase, MatchWholeWord, RegularExpression, InSelectionOnly string
+	FindNext, FindPrevious, ReplaceButton, ReplaceAll             string
+	EnterSearchTerm, NoMatchesInSelection                         string
+	MatchCount, MatchAt, NoMatches, Replaced, InvalidRegex        string
+
+	// KeyDiagnosticsDialog: title, the line shown while the log is empty, and
+	// its Copy button.
+	KeyDiagnosticsTitle, KeyDiagnosticsEmpty, Copy string
 }{
 	OK:      "OK",
 	Cancel:  "Cancel",
@@ -64,6 +79,30 @@ var Strings = struct {
 	Listing:     "Listing %s ...",
 	PropertyCol: "Property",
 	ValueCol:    "Value",
+
+	FindTitle:            "Find",
+	ReplaceTitle:         "Replace",
+	FindWhat:             "Find what:",
+	ReplaceWith:          "Replace with:",
+	MatchCase:            "Match case",
+	MatchWholeWord:       "Match whole word",
+	RegularExpression:    "Regular expression",
+	InSelectionOnly:      "In selection only",
+	FindNext:             "Find Next",
+	FindPrevious:         "Find Previous",
+	ReplaceButton:        "Replace",
+	ReplaceAll:           "Replace All",
+	EnterSearchTerm:      "Enter something to find",
+	NoMatchesInSelection: "No matches inside the selection",
+	MatchCount:           "%d match(es)",
+	MatchAt:              "Match %d of %d — line %d, col %d",
+	NoMatches:            "No matches for %q",
+	Replaced:             "Replaced %d occurrence(s)",
+	InvalidRegex:         "Invalid regex: %s",
+
+	KeyDiagnosticsTitle: "Key Diagnostics",
+	KeyDiagnosticsEmpty: "Press any key to see how it was decoded...",
+	Copy:                "Copy",
 }
 
 // messageBoxOverhead is how much narrower a message's wrapped content is than

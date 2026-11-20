@@ -793,3 +793,53 @@ func TestSearchRegexpReplaceOfANonMatchIsNotReplaced(t *testing.T) {
 		t.Fatal("replacementFor accepted a span that is not a match of the line")
 	}
 }
+
+// FindAtCursor selects the match under the caret — in the middle of it, just
+// past its end, or under a selection of it — where FindNext(1) skipped that
+// match and selected the next occurrence (Ctrl+F3 on a word landed on its
+// second appearance).
+func TestFindAtCursorSelectsTheMatchUnderTheCaret(t *testing.T) {
+	sel := func(e *Editor) string {
+		sr, sc, _, ec := e.selectionBounds()
+		return strconv.Itoa(sr) + ":" + strconv.Itoa(sc) + "-" + strconv.Itoa(ec)
+	}
+	for _, tc := range []struct {
+		name        string
+		setup       func(e *Editor)
+		want        string
+		wantOrdinal int
+	}{
+		{"caret mid-word", func(e *Editor) { e.SelectRange(0, 9, 0, 9) }, "0:7-10", 2},
+		{"caret just past the word", func(e *Editor) { e.SelectRange(0, 10, 0, 10) }, "0:7-10", 2},
+		{"caret at the word's start", func(e *Editor) { e.SelectRange(0, 7, 0, 7) }, "0:7-10", 2},
+		{"word selected", func(e *Editor) { e.SelectRange(0, 7, 0, 10) }, "0:7-10", 2},
+		{"caret on no match", func(e *Editor) { e.SelectRange(0, 4, 0, 4) }, "0:7-10", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEditor("foo is foo\nfoo")
+			tc.setup(e)
+			setSearch(t, e, SearchOptions{Query: "foo", WholeWord: true})
+			if !e.FindAtCursor() {
+				t.Fatal("FindAtCursor found nothing")
+			}
+			if got := sel(e); got != tc.want {
+				t.Errorf("selection = %s, want %s", got, tc.want)
+			}
+			if i, _ := e.MatchPosition(); i != tc.wantOrdinal {
+				t.Errorf("match ordinal = %d, want %d", i, tc.wantOrdinal)
+			}
+		})
+	}
+}
+
+// Two matches touching at the caret: the one containing it wins, as
+// WordAtCursor takes the word to the caret's right.
+func TestFindAtCursorPrefersTheMatchContainingTheCaret(t *testing.T) {
+	e := newTestEditor("abab")
+	e.SelectRange(0, 2, 0, 2)
+	setSearch(t, e, SearchOptions{Query: "ab"})
+	e.FindAtCursor()
+	if sr, sc, _, ec := e.selectionBounds(); sr != 0 || sc != 2 || ec != 4 {
+		t.Fatalf("selection = %d:%d-%d, want 0:2-4", sr, sc, ec)
+	}
+}

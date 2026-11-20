@@ -550,6 +550,43 @@ func (e *Editor) FindNext(dir int) bool {
 	return true
 }
 
+// FindAtCursor selects the match the caret is in, or the one it sits just
+// past, and otherwise behaves as FindNext(1); it reports whether any match was
+// found. It is the first step of a find-word-at-cursor key (Ctrl+F3), whose
+// search is the word under the caret: FindNext searches from the caret (from
+// a selection's end), so it skipped that very word and selected the next
+// occurrence. A match containing the caret wins over one ending at it, as
+// WordAtCursor prefers the word to the caret's right.
+func (e *Editor) FindAtCursor() bool {
+	matches := e.scanMatches()
+	if e.search.opts.InSelection {
+		matches = slices.DeleteFunc(slices.Clone(matches), func(m searchMatch) bool { return !e.matchInScope(m) })
+	}
+	row, col := e.cursorRow, e.cursorCol
+	if e.HasSelection() {
+		row, col, _, _ = e.selectionBounds()
+	}
+	pick := -1
+	for i, m := range matches {
+		if m.row != row || m.startCol > col || m.endCol < col {
+			continue
+		}
+		if m.endCol > col { // contains the caret
+			pick = i
+			break
+		}
+		if pick < 0 { // ends at the caret; keep looking for one containing it
+			pick = i
+		}
+	}
+	if pick < 0 {
+		return e.FindNext(1)
+	}
+	e.search.found = true
+	e.selectMatch(matches[pick])
+	return true
+}
+
 // selectMatch makes m the editor's selection, cursor at its end, and scrolls it
 // into view.
 func (e *Editor) selectMatch(m searchMatch) {

@@ -1,6 +1,7 @@
 package dialogs
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/gdamore/tcell/v3"
@@ -190,16 +191,18 @@ func TestButtonRowKey(t *testing.T) {
 	press(key(tcell.KeyEscape))
 	press(key(tcell.KeyTab))
 	press(key(tcell.KeyBacktab))
+	press(key(tcell.KeyDown))
+	press(key(tcell.KeyUp))
 	if fired != 1 || hidden != 1 {
 		t.Errorf("fired=%d hidden=%d, want 1 each", fired, hidden)
 	}
-	if len(left) != 2 || left[0] != +1 || left[1] != -1 {
-		t.Errorf("leave got %v, want [1 -1]", left)
+	if want := []int{+1, -1, +1, -1}; !slices.Equal(left, want) {
+		t.Errorf("leave got %v, want %v", left, want)
 	}
 
 	// A letter typed on the row is swallowed and changes nothing.
 	press(tcell.NewEventKey(tcell.KeyRune, "a", tcell.ModNone))
-	if btn != 0 || fired != 1 || hidden != 1 || len(left) != 2 {
+	if btn != 0 || fired != 1 || hidden != 1 || len(left) != 4 {
 		t.Error("a typed letter did something on the button row")
 	}
 }
@@ -328,5 +331,100 @@ func TestForwardReleaseToFocusedField(t *testing.T) {
 
 	if !ForwardReleaseToFocusedField(release, nil) {
 		t.Error("the release with nothing focused was not reported")
+	}
+}
+
+// fakeEnabler is a field that can be greyed out, for RingStep's skip.
+type fakeEnabler struct {
+	fakeFocusable
+	off bool
+}
+
+func (f *fakeEnabler) SetEnabled(on bool) { f.off = !on }
+func (f *fakeEnabler) Enabled() bool      { return !f.off }
+
+func TestRingStepWrapsThroughTheButtonRowAndSkipsDisabled(t *testing.T) {
+	a, b, c := &fakeEnabler{}, &fakeEnabler{off: true}, &fakeEnabler{}
+	ring := []core.Focusable{a, b, c} // the button row is stop 3
+	tests := []struct {
+		name           string
+		cur, dir, want int
+	}{
+		{"forward past a disabled field", 0, +1, 2},
+		{"last field onto the row", 2, +1, 3},
+		{"row wraps to the first field", 3, +1, 0},
+		{"first field back onto the row", 0, -1, 3},
+		{"row back to the last field", 3, -1, 2},
+		{"back past a disabled field", 2, -1, 0},
+		{"out of range counts as the row", 9, +1, 0},
+		{"negative counts as the row", -1, -1, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RingStep(ring, tt.cur, tt.dir); got != tt.want {
+				t.Errorf("RingStep(_, %d, %d) = %d, want %d", tt.cur, tt.dir, got, tt.want)
+			}
+		})
+	}
+	if got := RingStep([]core.Focusable{b}, 1, +1); got != 1 {
+		t.Errorf("RingStep over an all-disabled ring = %d, want the row (1)", got)
+	}
+	if got := RingStep(nil, 0, +1); got != 0 {
+		t.Errorf("RingStep(nil) = %d, want the row (0)", got)
+	}
+}
+
+// keyField consumes only the keys it is told to, as a widget declines the
+// ring's keys.
+type keyField struct {
+	fakeFocusable
+	takes tcell.Key
+	got   int
+}
+
+func (f *keyField) HandleKey(ev *tcell.EventKey) bool {
+	if ev.Key() == f.takes {
+		f.got++
+		return true
+	}
+	return false
+}
+
+func TestFieldRingKeyOffersTheWidgetFirst(t *testing.T) {
+	key := func(k tcell.Key) *tcell.EventKey { return tcell.NewEventKey(k, "", tcell.ModNone) }
+	var moved []int
+	fired, hid := 0, 0
+	run := func(f core.Focusable, k tcell.Key) {
+		if !FieldRingKey(key(k), f, func() { fired++ }, func() { hid++ }, func(d int) { moved = append(moved, d) }) {
+			t.Fatalf("FieldRingKey(%v) = false, want every key swallowed", k)
+		}
+	}
+
+	// A widget that declines: the ring gets every key.
+	plain := &keyField{}
+	for _, k := range []tcell.Key{tcell.KeyTab, tcell.KeyDown, tcell.KeyBacktab, tcell.KeyUp} {
+		run(plain, k)
+	}
+	if want := []int{+1, +1, -1, -1}; !slices.Equal(moved, want) {
+		t.Fatalf("moves = %v, want %v", moved, want)
+	}
+	run(plain, tcell.KeyEnter)
+	run(plain, tcell.KeyEscape)
+	run(nil, tcell.KeyEnter)
+	if fired != 2 || hid != 1 {
+		t.Fatalf("fired=%d hid=%d, want 2 and 1", fired, hid)
+	}
+
+	// A widget that takes the key keeps it from the ring.
+	moved, fired, hid = nil, 0, 0
+	for _, k := range []tcell.Key{tcell.KeyDown, tcell.KeyEnter, tcell.KeyEscape} {
+		f := &keyField{takes: k}
+		run(f, k)
+		if f.got != 1 {
+			t.Errorf("%v: widget saw it %d times, want 1", k, f.got)
+		}
+	}
+	if len(moved) != 0 || fired != 0 || hid != 0 {
+		t.Fatalf("ring acted on consumed keys: moves=%v fired=%d hid=%d", moved, fired, hid)
 	}
 }

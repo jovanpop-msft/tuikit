@@ -136,9 +136,10 @@ func ScrollToShow(sel, scroll, dataH int) int {
 
 // ButtonRowKey is the keyboard of a dialog's button row while it holds focus:
 // Left/Right move along the row, past a disabled button; Enter fires the
-// focused one; Escape hides; Tab and Backtab leave it back into the fields,
-// through leave(+1) or leave(-1). Everything else is swallowed — a letter
-// typed on the row must not edit the field focus came from.
+// focused one; Escape hides; Tab and Down leave it through leave(+1), Backtab
+// and Up through leave(-1), as FieldRingKey moves between fields. Everything
+// else is swallowed — a letter typed on the row must not edit the field focus
+// came from.
 //
 // The row is one stop in the Tab ring, crossed with the arrows, as a
 // propsheet.Form's button zone is. disabled is the same slice the dialog
@@ -153,12 +154,65 @@ func ButtonRowKey(ev *tcell.EventKey, btnFocus *int, n int, disabled []bool, fir
 		fire()
 	case tcell.KeyEscape:
 		hide()
-	case tcell.KeyTab:
+	case tcell.KeyTab, tcell.KeyDown:
 		leave(+1)
-	case tcell.KeyBacktab:
+	case tcell.KeyBacktab, tcell.KeyUp:
 		leave(-1)
 	}
 	return true
+}
+
+// FieldRingKey is the keyboard of a hand-rolled dialog while focus is on one
+// of its fields; ButtonRowKey is the button row's. It is propsheet.Form's
+// order: focused gets every key first, so an open dropdown's list takes the
+// arrows, Enter and Escape, a radio box its arrows, a checkbox Enter and
+// Space, a closed dropdown Enter (which opens it). What focused declines falls
+// to the ring: Tab and Down move(+1), Backtab and Up move(-1), Enter fires the
+// default button, Escape hides. Everything else is swallowed, as on the button
+// row: the dialog is modal.
+//
+// focused may be nil or a widget with no core.KeyHandler. A key the dialog
+// owns ahead of its fields (Find's F3) is the dialog's to test first.
+func FieldRingKey(ev *tcell.EventKey, focused core.Focusable, fire, hide func(), move func(dir int)) bool {
+	if kh, ok := focused.(core.KeyHandler); ok && kh.HandleKey(ev) {
+		return true
+	}
+	switch ev.Key() {
+	case tcell.KeyTab, tcell.KeyDown:
+		move(+1)
+	case tcell.KeyBacktab, tcell.KeyUp:
+		move(-1)
+	case tcell.KeyEnter:
+		fire()
+	case tcell.KeyEscape:
+		hide()
+	}
+	return true
+}
+
+// RingStep is the stop dir away from cur in a ring of fields followed by the
+// button row, which is the one stop at index len(fields). It wraps at both
+// ends and passes over disabled fields (FocusableEnabled); the button row is
+// always a stop, so a ring whose fields are all disabled lands there. A cur
+// outside 0..len(fields) is treated as the button row.
+//
+// It pairs with FieldRingKey's move and ButtonRowKey's leave: a dialog keeps
+// its focused index and its button-row index (reset to the default button on
+// leaving the row, so Enter from a field presses the default) as its own
+// fields.
+func RingStep(fields []core.Focusable, cur, dir int) int {
+	n := len(fields) + 1
+	i := cur
+	if i < 0 || i >= n {
+		i = len(fields)
+	}
+	for range n {
+		i = (i + dir + n) % n
+		if i == len(fields) || FocusableEnabled(fields[i]) {
+			return i
+		}
+	}
+	return len(fields)
 }
 
 // StepButton is the next enabled button from i in dir, or i at either end of
