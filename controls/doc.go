@@ -9,7 +9,8 @@
 //     pick-many checklist whose KeepOpen rows tick in place (check_items.go)
 //   - Toolbar — row of icon-only buttons with hover tooltips (toolbar.go)
 //   - ToolRow — a panel's one-row text toolbar: layout, hit-testing, the
-//     "More ▾" overflow and the gated Run, drawn by the host (tool_row.go); it hides cells by the
+//     "More ▾" overflow, the gated Run and the one press handler (Press),
+//     drawn by the host (tool_row.go); it hides cells by the
 //     same policy as Toolbar (hideToFit, common.go)
 //   - TabBar — one-row strip of plain tabs with an optional right-aligned
 //     cell; the host owns the labels and the active index (tab_bar.go)
@@ -18,7 +19,9 @@
 //   - DataGrid — scrollable, column-aligned tabular data display, split across
 //     datagrid.go, datagrid_draw.go, datagrid_input.go and datagrid_overlay.go;
 //     a host's column sort shows its order through PermutedSource, swaps it in
-//     with SetSourceReordered and offers SortMenuItems (datagrid_sort.go)
+//     with SetSourceReordered and offers SortMenuItems (datagrid_sort.go); a
+//     grid of pre-rendered text sorts and auto-aligns by NewTextCellKey,
+//     CompareTextCells and ClassifyTextCell (datagrid_textcell.go)
 //   - ValueViewer — DataGrid's "Show Value" popup (value_viewer.go), a read-only
 //     editor.Editor in a box
 //

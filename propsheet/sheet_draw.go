@@ -3,6 +3,7 @@ package propsheet
 import (
 	"github.com/gdamore/tcell/v3"
 	"github.com/radix29/tuikit/core"
+	"github.com/radix29/tuikit/dialogs"
 	"github.com/radix29/tuikit/theme"
 )
 
@@ -100,12 +101,8 @@ func (p *PropertySheet) drawContent(s tcell.Screen, x, y, w, h int) {
 		return
 	}
 	slot := &p.pages[p.current]
-	titleSt := theme.StyleDialog().Bold(true)
-	core.DrawText(s, x, y, titleSt, slot.title)
-	sep := theme.StyleDialogLine()
-	core.DrawHLine(s, x, y+1, w, sep)
-
-	contentY, contentH := y+2, max(0, h-2)
+	contentY := dialogs.DrawSectionHeading(s, x, y, w, slot.title)
+	contentH := max(0, h-2)
 	dimSt := theme.StyleDialogDim()
 
 	switch slot.state {

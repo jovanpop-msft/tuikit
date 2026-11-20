@@ -111,7 +111,7 @@ func (d *FileDialog) drawEntry(s tcell.Screen, y, x, nameColW, idx int) {
 	case e.IsDir:
 		sizeText = Strings.DirSize
 	case !e.SizeUnknown:
-		sizeText = formatFileSize(e.Size)
+		sizeText = core.FormatBytes(e.Size)
 	}
 	core.DrawTextRight(s, x+nameColW+1, y, fileSizeColW, st, sizeText)
 

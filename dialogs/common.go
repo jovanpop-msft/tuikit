@@ -24,6 +24,12 @@ var Strings = struct {
 
 	Elapsed, Cancelling string // ProgressDialog's ElapsedText and CancellingText defaults
 
+	// DrawTaskProgress: the label over the bar, the time rows' labels (padded
+	// to line up), the remaining time before there is an estimate, and
+	// TaskMessage's wording (TaskFailed: %s is the error).
+	TaskProgress, TaskElapsed, TaskRemaining, TaskNoEstimate string
+	TaskStarting, TaskCancelled, TaskFailed, TaskCompleted   string
+
 	// FileDialog: field labels, column headers, a folder's size cell, and the
 	// busy line while a folder lists (%s is the folder).
 	PathLabel, FileLabel     string
@@ -69,6 +75,15 @@ var Strings = struct {
 
 	Elapsed:    "Elapsed",
 	Cancelling: "Cancelling — waiting for the operation to stop",
+
+	TaskProgress:   "Progress:",
+	TaskElapsed:    "Elapsed  :",
+	TaskRemaining:  "Remaining:",
+	TaskNoEstimate: "--:--:--",
+	TaskStarting:   "Starting...",
+	TaskCancelled:  "Cancelled.",
+	TaskFailed:     "Failed: %s",
+	TaskCompleted:  "Completed successfully.",
 
 	PathLabel:   "Path:",
 	FileLabel:   "File:",

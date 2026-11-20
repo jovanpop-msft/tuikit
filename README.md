@@ -33,9 +33,16 @@ tuikit/
 ├── theme/      Colour palette + derived tcell.Style helpers — palette.go, styles.go
 ├── core/       Rect geometry, drawing primitives, string/int helpers
 │             — geometry.go (Rect, SplitColumns: equal columns with a
-│               gutter), screen.go, drawing.go, strutil.go, mathutil.go,
+│               gutter), screen.go, drawing.go, strutil.go (width,
+│               truncate, wrap, pad; FormatThousands; FormatBytes: a
+│               binary-unit size, unit chosen after rounding; FormatClock:
+│               a truncating HH:MM:SS;
+│               ParseFormattedNumber: their inverse, byte units scaled to
+│               bytes; MatchesAny:
+│               a filter box's case-insensitive substring test), mathutil.go,
 │               viewport.go (Viewport: 2-D scroll offset, clamp, wheel,
-│               both scrollbars and their drag latches),
+│               navigation keys (ScrollKey: End keeps the column), both
+│               scrollbars and their drag latches),
 │               linepane.go (LinePane: a read-only line pane's scroll
 │               offset, clamp, inset draw and "more" hint),
 │               wrap_hanging.go (WrapHanging: wrap keeping spacing, hung
@@ -51,6 +58,8 @@ tuikit/
 │               OpenOverlay: which of a host's children has its overlay open),
 │               gesture.go (Gesture: which zone of a host claimed the held
 │               Button1 press, routed to until release),
+│               drag.go (Drag: a drag-and-drop payload armed on a press,
+│               started past a threshold, dropped on release; its ghost),
 │               click.go (ClickTracker: pairs fresh presses into a
 │               double-click; DoubleClickInterval, the one speed),
 │               buffer.go (Buffer: an off-screen cell grid satisfying
@@ -58,7 +67,8 @@ tuikit/
 │               tests draw into it and read it back),
 │               tabstrip.go (TabStripSegments/TabLabelWidth: the one tab-bar
 │               column layout, shared by draw and hit-test code),
-│               keys.go (NormalizeKey: the Ctrl+letter fold), mouse.go
+│               keys.go (NormalizeKey: the Ctrl+letter fold;
+│               IsCtrlEnter: both Ctrl+Enter encodings), mouse.go
 │               (MouseEventName: "Shift+Button1", tcell's missing
 │               EventMouse.Name)
 ├── widgets/    InputField, DropDown, CheckBox, Button, RadioBox, Spinner — one file each;
@@ -70,7 +80,8 @@ tuikit/
 │               right-aligned cell)
 ├── dialogs/    ModalDialog (focus trap), Stack (the open dialogs, z-ordered), Properties/Alert/Message
 │             (styled lines over the host's own buttons)/Confirm/TypedConfirm
-│             (retype-to-confirm)/Prompt (one-line input)/Progress/List (pick a
+│             (retype-to-confirm)/Prompt (one-line input)/Progress (Run: a
+│             worker's lifecycle behind it, on the host's loop.Runner)/List (pick a
 │             row, then a button)/Log (read-only newest-first log in a
 │             selectable Editor; Record from any goroutine)/Text (scrollable
 │             reference text, hanging-indent wrap)/FindReplace (Find and
@@ -91,7 +102,12 @@ tuikit/
 │               dialog's flat []core.Focusable ring; RingMouse is its whole
 │               HandleMouse, in the one order § Mouse gestures allows),
 │               field_ring.go (FieldRing: such a dialog's focus/button
-│               state and its Key/Mouse/clipboard wiring in one value)
+│               state and its Key/Mouse/clipboard wiring in one value),
+│               section_heading.go (DrawSectionHeading: a bold title over a
+│               rule — propsheet's Section rows and page titles use it too),
+│               task_progress.go (DrawTaskProgress: a loop.Task's bar,
+│               elapsed/remaining times and message, the message wrapped over
+│               every row left; TaskMessage, its default wording)
 ├── controls/   MenuBar+ContextMenu, Toolbar, ToolRow, TabBar, TreeView, DataGrid, ListBox
 │             — menu_bar.go, context_menu.go, menu_item.go (shared types;
 │               MenuItem.Checked: a toggle drawn with MenuTick at draw time),
@@ -112,7 +128,9 @@ tuikit/
 │               optional top-border action, SetTitleButton), listbox.go;
 │               DataGrid: datagrid.go (state/source/widths), _draw, _input,
 │               _overlay (right-click menu, "Show Value"), _sort (a host's
-│               column sort: PermutedSource, SetSourceReordered, SortMenuItems);
+│               column sort: PermutedSource, SetSourceReordered, SortMenuItems),
+│               _textcell (a pre-rendered text cell read for sorting and
+│               SetAutoAlign: TextCellKey, CompareTextCells, ClassifyTextCell);
 │               value_viewer.go (ValueViewer: the modal read-only popup
 │               "Show Value" opens; a host can hold its own)
 │   └── editor/ Editor — document.go (the one text-mutation chokepoint; its
@@ -162,7 +180,13 @@ tuikit/
 │               runner.go (Runner: the background side — Go/GoRepair/Recover
 │               start or guard a goroutine so a panic is reported, not fatal;
 │               GoOnce a single-flight run whose latch a panic releases;
-│               FanOut is a bounded pool recovering per item).
+│               FanOut is a bounded pool recovering per item; Tick a
+│               spinner's redraw clock, stopped by closing done),
+│               tasks.go (Tasks/Task: non-modal background tasks — Start
+│               a task and its context, Progress/Done post from the worker,
+│               Finish settles it with the cancelled-vs-failed rule
+│               ProgressDialog.Run also keeps; ErrTaskPanicked; Keep caps
+│               the history, never evicting a running task).
 │               ARCHITECTURE.md § Threading
 ├── tuikittest/ Test kit, imported by _test files only — screen.go (Screen: a
 │               core.Buffer with Find/RowOf/Snapshot/SetSize),
@@ -181,7 +205,10 @@ tuikit/
 │               edited behind a ListEditor — add/remove/restore/swap,
 │               dirty, revert, name checks under the host's equality), celltoggle.go
 │               (BindCellToggle/NewCellToggleGrid: activate a cell to change
-│               its row), staticblock.go (StaticBlock: detail rows filled
+│               its row), filterindex.go (FilterIndex: a filter box's
+│               view over a grid's list — rows map through it; its
+│               FilterRow's onFilter is where the host clears the detail
+│               on an empty result), staticblock.go (StaticBlock: detail rows filled
 │               from a selection, cleared as one), form.go; sheet.go
 │               (state/pages), sheet_draw.go, sheet_input.go, sheet_clipboard.go
 └── examples/   Runnable programs, not library packages (nothing imports them)
@@ -202,7 +229,7 @@ charts           —
 controls/editor  —
 controls         → controls/editor
 layout           —
-dialogs          → widgets, controls/editor
+dialogs          → widgets, controls/editor, loop
 propsheet        → dialogs, controls, controls/editor, widgets
 clipboard        imports no tuikit package, not even core/theme (tcell only)
 loop             imports no tuikit package, not even core/theme (tcell only)
@@ -222,7 +249,10 @@ examples/*       → whatever they demonstrate; nothing imports them
   from the system clipboard with this package.
 - **loop** is outside the widget graph too: no widget posts, wakes or starts a goroutine. It is
   host plumbing, here because § Threading dictates the protocol and every
-  tcell v3 host otherwise rewrites its bug-dense part.
+  tcell v3 host otherwise rewrites its bug-dense part. Its one tuikit
+  importer is `dialogs`, for `ProgressDialog.Run`, which takes the host's
+  `Runner` and `Poster` as arguments, as `clipboard.Dispatcher` takes its `Go`
+  and `Post`, and for `DrawTaskProgress`, which only reads a `Task`.
 - **No language lives here.** A host's language plugs in through `Editor`'s
   hooks: a highlighter keeping its line states through `LineStateAt`,
   `SetIndentRule`, `SetWordStart`, `SetCompletionTrigger`, `SetLineComment`

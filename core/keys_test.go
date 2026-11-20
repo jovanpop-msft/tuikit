@@ -51,3 +51,28 @@ func TestNormalizeKey(t *testing.T) {
 		})
 	}
 }
+
+// Ctrl+Enter arrives as KeyEnter+ModCtrl under kitty/modifyOtherKeys and as a
+// bare LF (KeyCtrlJ) on legacy terminals; plain Enter and Shift+Enter must not
+// match.
+func TestIsCtrlEnter(t *testing.T) {
+	tests := []struct {
+		name string
+		in   *tcell.EventKey
+		want bool
+	}{
+		{"kitty ctrl+enter", tcell.NewEventKey(tcell.KeyEnter, "", tcell.ModCtrl), true},
+		{"ctrl+shift+enter", tcell.NewEventKey(tcell.KeyEnter, "", tcell.ModCtrl|tcell.ModShift), true},
+		{"legacy LF", tcell.NewEventKey(tcell.KeyCtrlJ, "", tcell.ModNone), true},
+		{"legacy LF with ctrl", tcell.NewEventKey(tcell.KeyCtrlJ, "", tcell.ModCtrl), true},
+		{"plain enter", tcell.NewEventKey(tcell.KeyEnter, "", tcell.ModNone), false},
+		{"shift+enter", tcell.NewEventKey(tcell.KeyEnter, "", tcell.ModShift), false},
+		{"alt+enter", tcell.NewEventKey(tcell.KeyEnter, "", tcell.ModAlt), false},
+		{"ctrl+m", tcell.NewEventKey(tcell.KeyRune, "m", tcell.ModCtrl), false},
+	}
+	for _, tt := range tests {
+		if got := IsCtrlEnter(tt.in); got != tt.want {
+			t.Errorf("%s: IsCtrlEnter = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

@@ -5,8 +5,9 @@ import "github.com/gdamore/tcell/v3"
 // Viewport is the scroll state of a view onto a canvas larger than it in both
 // axes: the offset and its clamp, wheel steps, the two scrollbars and their
 // drag latches. It is a value the host embeds, not a control: the host draws
-// the content (canvas cell X,Y at View's top-left), owns the keys, and decides
-// what else a scroll does (drop a tooltip, ...) from the moved results.
+// the content (canvas cell X,Y at View's top-left), routes the keys (ScrollKey
+// binds the navigation ones), and decides what else a scroll does (drop a
+// tooltip, ...) from the moved results.
 //
 // The geometry is fields the host sets before each use (View, ContentW,
 // ContentH, BarsInside), since only the host knows when its canvas or rect
@@ -55,6 +56,37 @@ func (v *Viewport) ScrollTo(x, y int) bool {
 // ScrollBy is ScrollTo relative to the current offset.
 func (v *Viewport) ScrollBy(dx, dy int) bool {
 	return v.ScrollTo(v.X+dx, v.Y+dy)
+}
+
+// ScrollKey scrolls by a navigation key: Left/Right by stepX columns, Up/Down
+// by one row, PgUp/PgDn by View's height less one row of overlap (at least
+// one), Home to the origin, End to the last row with the column kept (as a
+// text view's End does; a host wanting the far corner handles End itself
+// first). bound reports whether the key is one of these, moved whether the
+// offset changed: a host returns moved so a key at a boundary falls through,
+// or bound to claim the key either way. Modifiers are not looked at; a host
+// that gives Shift+arrow or Ctrl+End its own meaning tests it first.
+func (v *Viewport) ScrollKey(ev *tcell.EventKey, stepX int) (bound, moved bool) {
+	page := max(v.View.H-1, 1)
+	switch ev.Key() {
+	case tcell.KeyUp:
+		return true, v.ScrollBy(0, -1)
+	case tcell.KeyDown:
+		return true, v.ScrollBy(0, 1)
+	case tcell.KeyLeft:
+		return true, v.ScrollBy(-stepX, 0)
+	case tcell.KeyRight:
+		return true, v.ScrollBy(stepX, 0)
+	case tcell.KeyPgUp:
+		return true, v.ScrollBy(0, -page)
+	case tcell.KeyPgDn:
+		return true, v.ScrollBy(0, page)
+	case tcell.KeyHome:
+		return true, v.ScrollTo(0, 0)
+	case tcell.KeyEnd:
+		return true, v.ScrollTo(v.X, v.MaxY())
+	}
+	return false, false
 }
 
 // EnsureVisible scrolls the least distance that brings canvas rect r into

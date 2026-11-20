@@ -143,7 +143,7 @@ const PageTitleWidth = pageListWidth - 2
 // ApplyingSpinner is the busy indicator on the button row while an Apply/OK or
 // Script Changes is in flight (Connect's, so the waits look alike). The sheet
 // draws it from elapsed time only; the host owns the redraw clock (see
-// widgets.Spinner) and should tick at its Period. Package-level: a host
+// widgets.Spinner) and should tick at its Period (loop.Runner.Tick). Package-level: a host
 // changing it does so on the UI goroutine, before the first Draw.
 var ApplyingSpinner = widgets.SpinnerBraille
 

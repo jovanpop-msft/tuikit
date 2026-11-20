@@ -25,6 +25,8 @@
 //   - confirm_dialog.go     — ConfirmDialog (two-button yes/no)
 //   - typed_confirm_dialog.go — TypedConfirmDialog (retype-to-confirm)
 //   - progress_dialog.go    — ProgressDialog (spinner, elapsed time, Cancel)
+//   - progress_run.go       — ProgressDialog.Run: a worker's lifecycle behind
+//     the dialog (busy refusal, reports, release on panic, cancelled-vs-done)
 //   - list_dialog.go        — ListDialog (pick a row of a live list, then a button)
 //   - log_dialog.go         — LogDialog (read-only newest-first log, selectable)
 //   - text_dialog.go        — TextDialog (scrollable reference text, hanging wrap)

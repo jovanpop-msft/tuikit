@@ -4,8 +4,10 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 )
 
 // recorder is a Runner whose Post and Report append to one ordered log, so a
@@ -280,6 +282,54 @@ func TestGoOncePanicReleasesTheLatch(t *testing.T) {
 		rec.posted[0]()
 		if busy {
 			t.Fatal("busy still set after the panic's repair ran")
+		}
+	})
+}
+
+// Tick fires once per period, not at the call, and stops for good once done
+// closes: a clock that outlived its worker would wake the loop every period
+// for the process's lifetime.
+func TestTickFiresEveryPeriodUntilDone(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rec := &recorder{}
+		r := rec.runner(0)
+		done := make(chan struct{})
+		var ticks atomic.Int32
+		r.Tick("spinning", 100*time.Millisecond, done, func() { ticks.Add(1) })
+
+		synctest.Wait()
+		if n := ticks.Load(); n != 0 {
+			t.Fatalf("ticks at the call = %d, want 0", n)
+		}
+		time.Sleep(350 * time.Millisecond)
+		synctest.Wait()
+		if n := ticks.Load(); n != 3 {
+			t.Fatalf("ticks after 3.5 periods = %d, want 3", n)
+		}
+
+		close(done)
+		synctest.Wait() // the goroutine has returned: synctest.Test fails on a leak
+		time.Sleep(time.Second)
+		if n := ticks.Load(); n != 3 {
+			t.Fatalf("ticks after done = %d, want 3", n)
+		}
+		if got := rec.snapshot(); len(got) != 0 {
+			t.Fatalf("events = %q, want none", got)
+		}
+	})
+}
+
+// A panicking tick is recovered and reported, and stops the clock rather than
+// taking the process down.
+func TestTickRecoversAPanickingTick(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rec := &recorder{}
+		r := rec.runner(0)
+		r.Tick("spinning", time.Millisecond, make(chan struct{}), func() { panic("boom") })
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		if got := rec.snapshot(); len(got) != 1 || got[0] != "report spinning" {
+			t.Fatalf("events = %q, want [report spinning]", got)
 		}
 	})
 }

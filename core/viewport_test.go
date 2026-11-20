@@ -177,3 +177,66 @@ func TestViewportWheel(t *testing.T) {
 		t.Error("Wheel took a Button1 press")
 	}
 }
+
+func TestViewportScrollKey(t *testing.T) {
+	key := func(k tcell.Key) *tcell.EventKey { return tcell.NewEventKey(k, "", 0) }
+	// View 10x5 over 40x20: MaxX 30, MaxY 15, a page is 4 rows.
+	tests := []struct {
+		name      string
+		k         tcell.Key
+		x, y      int // offset before
+		wantX     int
+		wantY     int
+		wantMoved bool
+	}{
+		{"down", tcell.KeyDown, 0, 0, 0, 1, true},
+		{"up at the top", tcell.KeyUp, 3, 0, 3, 0, false},
+		{"up", tcell.KeyUp, 0, 5, 0, 4, true},
+		{"right by stepX", tcell.KeyRight, 0, 0, 3, 0, true},
+		{"right clamps", tcell.KeyRight, 29, 0, 30, 0, true},
+		{"right at the edge", tcell.KeyRight, 30, 0, 30, 0, false},
+		{"left at the edge", tcell.KeyLeft, 0, 2, 0, 2, false},
+		{"left", tcell.KeyLeft, 7, 0, 4, 0, true},
+		{"page down", tcell.KeyPgDn, 0, 0, 0, 4, true},
+		{"page down clamps", tcell.KeyPgDn, 0, 13, 0, 15, true},
+		{"page up", tcell.KeyPgUp, 0, 9, 0, 5, true},
+		{"page up clamps", tcell.KeyPgUp, 0, 2, 0, 0, true},
+		{"home", tcell.KeyHome, 8, 6, 0, 0, true},
+		{"home at the origin", tcell.KeyHome, 0, 0, 0, 0, false},
+		{"end keeps the column", tcell.KeyEnd, 8, 6, 8, 15, true},
+		{"end at the bottom", tcell.KeyEnd, 8, 15, 8, 15, false},
+	}
+	for _, tt := range tests {
+		v := newTestViewport(false)
+		v.X, v.Y = tt.x, tt.y
+		bound, moved := v.ScrollKey(key(tt.k), 3)
+		if !bound || moved != tt.wantMoved || v.X != tt.wantX || v.Y != tt.wantY {
+			t.Errorf("%s: = %v,%v at %d,%d, want true,%v at %d,%d",
+				tt.name, bound, moved, v.X, v.Y, tt.wantMoved, tt.wantX, tt.wantY)
+		}
+	}
+
+	v := newTestViewport(false)
+	v.X, v.Y = 2, 2
+	for _, ev := range []*tcell.EventKey{key(tcell.KeyTab), key(tcell.KeyEnter), tcell.NewEventKey(tcell.KeyRune, "j", 0)} {
+		if bound, moved := v.ScrollKey(ev, 3); bound || moved || v.X != 2 || v.Y != 2 {
+			t.Errorf("ScrollKey(%v) = %v,%v at %d,%d, want false,false at 2,2", ev.Name(), bound, moved, v.X, v.Y)
+		}
+	}
+
+	// A zero-size view still pages by one row, and nothing scrolls past the
+	// canvas; an empty canvas never moves.
+	z := &Viewport{ContentW: 4, ContentH: 3}
+	if _, moved := z.ScrollKey(key(tcell.KeyPgDn), 3); !moved || z.Y != 1 {
+		t.Errorf("PgDn in a zero-height view: moved=%v Y=%d, want true 1", moved, z.Y)
+	}
+	if _, moved := z.ScrollKey(key(tcell.KeyEnd), 3); !moved || z.Y != 3 {
+		t.Errorf("End in a zero-height view: moved=%v Y=%d, want true 3", moved, z.Y)
+	}
+	e := &Viewport{View: Rect{W: 10, H: 5}}
+	for _, k := range []tcell.Key{tcell.KeyDown, tcell.KeyRight, tcell.KeyPgDn, tcell.KeyEnd} {
+		if bound, moved := e.ScrollKey(key(k), 3); !bound || moved || e.X != 0 || e.Y != 0 {
+			t.Errorf("key %v on an empty canvas = %v,%v at %d,%d, want true,false at 0,0", k, bound, moved, e.X, e.Y)
+		}
+	}
+}

@@ -36,7 +36,8 @@ a recovered panic, with the stack captured where it happened, to the host's
 last word is the panic; `GoOnce` is `GoRepair` for a single-flight
 button, owning its busy latch so a panic releases it too; `FanOut` is a bounded pool that recovers each item on
 its own and fills its queue before any worker starts, so a dead worker cannot
-block the producer (`loop/runner_test.go`). Like `Poster`, it is plumbing the
+block the producer; `Tick` is the redraw clock a spinner drawn from elapsed
+time needs, stopped when the caller closes `done` (`loop/runner_test.go`). Like `Poster`, it is plumbing the
 host calls, not a control: the rule below still holds.
 
 **Async state is data, not goroutines.** No tuikit control spawns a goroutine
@@ -64,6 +65,15 @@ or owns a timer:
   (`loop.Poster.Post`), orders several copies in flight (newest wins), and
   is itself called only on the UI goroutine. A host calling Write/Read
   directly owns that ordering itself.
+- `dialogs.ProgressDialog.Run` likewise starts nothing of its own: the work
+  and the spinner's clock run on the host's `loop.Runner`, and every report
+  and the result come back through its `loop.Poster`. Called on the UI
+  goroutine; it refuses a second job while one holds the dialog (running the
+  job's `Repair`, since the caller's latch would otherwise stay set), drops a
+  report from a finished job, releases the dialog on a panic, and reports
+  `cancelled` only when Cancel was pressed *and* the work failed — a write that
+  completed before the cancel reached it is a success
+  (`dialogs/progress_run_test.go`).
 
 ## Mouse gestures
 
@@ -157,6 +167,18 @@ modes) that leaves the content clamps the pointer to the row or column just
 beyond the view and scrolls one toward it per motion event: tuikit has no
 timer, so a pointer resting outside does not keep scrolling. A toggle grid's
 drag paints only cells under the pointer and never scrolls.
+
+### core.Drag: carrying a payload between regions
+
+A drag that drops something on another region (goSSMS's Object Explorer node
+into a query editor) is a router-level gesture, not a widget's. `core.Drag[P]`
+is armed on a fresh press from what the press hit, starts only once the
+pointer is `Threshold` cells away (a press held still is a click), and hands
+the payload back from `Release` only if it started. The host calls `Release`
+on `ButtonNone` before `Route`, and `Route` ahead of its `Gesture`, menu row
+and splitter, so an armed drag takes every event until the release; any
+other button cancels it. Whether the drop is still valid (no modal opened
+mid-drag) and what it does are the host's.
 
 ### dialogs.Stack: releases go to every open dialog
 
@@ -314,6 +336,8 @@ A hover hint (`Toolbar`, `TreeView`'s title button) is an `Overlay` whose
   `HandleKey` (`InputField`, `Editor`, `PropertySheet` do), and a host that
   matches Ctrl+letter keys itself calls it once on each key before
   dispatching. It is idempotent, so both calling it costs nothing.
+  Ctrl+Enter is matched with `core.IsCtrlEnter`, never `KeyEnter`+`ModCtrl`
+  alone: a legacy terminal sends it as a bare LF (`KeyCtrlJ`).
 - **Mouse return values follow one rule** (`core.MouseHandler`'s doc):
   plain motion is never claimed (hover may be tracked, but `true` only for a
   release ending the control's own gesture, or with an overlay open); a wheel

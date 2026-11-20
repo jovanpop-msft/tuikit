@@ -5,6 +5,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"sync"
+	"time"
 )
 
 // Runner starts a host's background goroutines so that a panic on one becomes
@@ -175,6 +176,32 @@ func (r *Runner) FanOut(n int, what string, work func(i int), onPanic func(i int
 		})
 	}
 	wg.Wait()
+}
+
+// Tick calls tick every period on a new goroutine labelled with what, until
+// done closes. It is the redraw clock a busy indicator drawn from elapsed time
+// needs and no control may start itself (widgets.Spinner,
+// dialogs.ProgressDialog, propsheet.ApplyingSpinner): pass (*Poster).Wake as
+// tick and the spinner's Period.
+//
+// Close done in a defer inside the worker the clock stands for, so a panicking
+// worker stops it too; closed on the worker's happy path only, the clock
+// outlives the panic and wakes the loop every period for the process's
+// lifetime. A panic in tick itself is recovered and reported, as for Go, and
+// stops the clock. The first tick comes one period after the call, not at it.
+func (r *Runner) Tick(what string, period time.Duration, done <-chan struct{}, tick func()) {
+	r.Go(what, func() {
+		ticker := time.NewTicker(period)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				tick()
+			}
+		}
+	})
 }
 
 // report captures the stack on the panicking goroutine and hands it to Report.

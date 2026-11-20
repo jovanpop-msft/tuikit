@@ -43,8 +43,8 @@ type ToolCell struct {
 // overflow, Run (the gate every path that acts on a cell goes through) and Draw.
 // What a cell does and when it is dimmed stay with the host, because the hosts
 // disagree on it (one dims per cell from its Disabled field, one dims the whole
-// row while a read is in flight, one asks a predicate per cell); Draw takes both
-// as arguments. Toolbar is the other kind: an application's icon strip.
+// row while a read is in flight, one asks a predicate per cell); the host sets
+// the gate once (Disabled, Reason, Status) or passes it to each call. Toolbar is the other kind: an application's icon strip.
 type ToolRow struct {
 	Cells []ToolCell
 
@@ -61,6 +61,88 @@ type ToolRow struct {
 	// behind More. Only for a row whose host sizes the labels to fit (Plan
 	// Compare's two pickers): a dropped cell is unreachable by mouse.
 	NoOverflow bool
+
+	// Disabled and Reason are the host's gate for the row, set once when the
+	// cells are built: Run, OverflowItems and Draw ask them wherever they are
+	// passed a nil predicate, before falling back to each cell's own Disabled
+	// and Reason fields. Set here, the click, the More menu and the dimming
+	// cannot be wired to different predicates. Either may be nil.
+	Disabled func(i int) bool
+	Reason   func(i int) string
+
+	// Status receives Run's refusal ("Label: reason") wherever Run is passed a
+	// nil status, RunCell and OverflowMenu included. Nil says nothing.
+	Status func(string)
+
+	// ReasonOnly makes Run's refusal the reason alone, without "Label: ", for
+	// a row whose reasons are whole sentences and whose labels carry a value
+	// ("Metric: Duration ▾"), where the prefix reads as a second colon clause.
+	ReasonOnly bool
+}
+
+// MenuShower is what OverflowMenu pops its menu on; *ContextMenu is one.
+type MenuShower interface {
+	Show(x, y int, items []MenuItem)
+}
+
+// disabledFn resolves a predicate argument: the argument, else the row's
+// Disabled, else the cell's own Disabled field.
+func (tr *ToolRow) disabledFn(arg func(int) bool) func(int) bool {
+	switch {
+	case arg != nil:
+		return arg
+	case tr.Disabled != nil:
+		return tr.Disabled
+	}
+	return func(i int) bool { return tr.Cells[i].Disabled }
+}
+
+// reasonFn resolves a reason argument as disabledFn does a predicate.
+func (tr *ToolRow) reasonFn(arg func(int) string) func(int) string {
+	switch {
+	case arg != nil:
+		return arg
+	case tr.Reason != nil:
+		return tr.Reason
+	}
+	return func(i int) string { return tr.Cells[i].Reason }
+}
+
+// RunCell is Run through the row's own gate and Status: what a host binds its
+// clicks and keys to once Disabled, Reason and Status are set.
+func (tr *ToolRow) RunCell(i int) { tr.Run(i, nil, nil, nil) }
+
+// OverflowMenu shows the More menu (OverflowItems through the row's own gate,
+// each item running through RunCell) on menu, anchored under More or at
+// fallback's top-left (MenuAnchor).
+func (tr *ToolRow) OverflowMenu(menu MenuShower, fallback core.Rect) {
+	x, y := tr.MenuAnchor(-1, fallback)
+	menu.Show(x, y, tr.OverflowItems(nil, nil, tr.RunCell))
+}
+
+// Press acts on a Button1 press at (mx, my) on the row Layout placed in r:
+// More pops OverflowMenu on menu (anchored at fallback when More has no
+// rect), a cell runs through RunCell, and a gap — the prefix, the padding,
+// the columns a host draws after the row — does nothing. It reports whether
+// the press fell on the row at all, so the host claims it (arms its gesture
+// zone) either way: a dimmed cell or a gap swallows the press rather than
+// passing it to whatever lies under the row. r is not stored because Layout
+// does not keep it; pass the same rect. A host with its own control on the
+// row (a filter field) tests that first.
+//
+// More is tested before the cells. Layout never overlaps them, but a press
+// on More must open the menu even if a host moved a rect by hand, and owning
+// the order here is what keeps the hosts from disagreeing about it.
+func (tr *ToolRow) Press(r core.Rect, mx, my int, menu MenuShower, fallback core.Rect) bool {
+	if r.H != 1 || !r.Contains(mx, my) {
+		return false
+	}
+	if !tr.More.Rect.IsZero() && tr.More.Rect.Contains(mx, my) {
+		tr.OverflowMenu(menu, fallback)
+	} else if i := tr.CellAt(mx, my); i >= 0 {
+		tr.RunCell(i)
+	}
+	return true
 }
 
 // Layout places the cells left to right inside r, after prefix (a label the host
@@ -178,16 +260,11 @@ func (tr *ToolRow) MenuAnchor(i int, fallback core.Rect) (x, y int) {
 // carrying the gate its cell would have — and its reason as the item's Note,
 // which a MenuItem shows precisely while it is disabled, so a withheld action
 // still explains itself the way the dimmed cell does. A nil disabled or reason
-// reads the cell's Disabled or Reason field. A selected cell keeps a bullet,
-// since the point of drawing a rate selector selected is to say which is in
-// force.
+// reads the row's Disabled or Reason, else the cell's own field. A selected
+// cell keeps a bullet, since the point of drawing a rate selector selected is
+// to say which is in force.
 func (tr *ToolRow) OverflowItems(disabled func(int) bool, reason func(int) string, run func(int)) []MenuItem {
-	if disabled == nil {
-		disabled = func(i int) bool { return tr.Cells[i].Disabled }
-	}
-	if reason == nil {
-		reason = func(i int) string { return tr.Cells[i].Reason }
-	}
+	disabled, reason = tr.disabledFn(disabled), tr.reasonFn(reason)
 	items := make([]MenuItem, 0, len(tr.Hidden))
 	for _, i := range tr.Hidden {
 		label := tr.Cells[i].Label
@@ -217,23 +294,25 @@ func (tr *ToolRow) OverflowItems(disabled func(int) bool, reason func(int) strin
 // Run invokes cell i's action, or reports why it did not: the one gate a host
 // gives clicks, key bindings and the More menu, so none of them can act on a
 // cell another shows dimmed. disabled and reason are the pair the host passes
-// OverflowItems, nil reading the cell's Disabled or Reason field as there. A
-// withheld cell with a reason sends status "Label: reason" (runLabel); one without says
+// OverflowItems, nil resolving as there; a nil status is the row's Status. A
+// withheld cell with a reason sends status "Label: reason" (runLabel; the
+// reason alone under ReasonOnly); one without says
 // nothing, its grey speaking for itself (a Refresh already running). An index
 // outside the row, or a cell with no Action, does nothing.
 func (tr *ToolRow) Run(i int, disabled func(int) bool, reason func(int) string, status func(string)) {
 	if i < 0 || i >= len(tr.Cells) {
 		return
 	}
-	if disabled == nil {
-		disabled = func(i int) bool { return tr.Cells[i].Disabled }
-	}
-	if reason == nil {
-		reason = func(i int) string { return tr.Cells[i].Reason }
+	disabled, reason = tr.disabledFn(disabled), tr.reasonFn(reason)
+	if status == nil {
+		status = tr.Status
 	}
 	if disabled(i) {
 		if r := reason(i); r != "" && status != nil {
-			status(runLabel(tr.Cells[i].Label) + ": " + r)
+			if !tr.ReasonOnly {
+				r = runLabel(tr.Cells[i].Label) + ": " + r
+			}
+			status(r)
 		}
 		return
 	}
@@ -244,9 +323,10 @@ func (tr *ToolRow) Run(i int, disabled func(int) bool, reason func(int) string, 
 
 // Draw paints the row Layout placed in r: the bar in the menu-bar style, every
 // shown cell in the tooltip scheme — dimmed when disabled, else in the selected
-// look when Selected — then More, dimmed when moreDim. disabled nil reads each
-// cell's Disabled field, as Run and OverflowItems do; pass the same predicate as
-// to Run, so a cell that looks inert is. A host draws whatever else shares the
+// look when Selected — then More, dimmed when moreDim. disabled nil reads the
+// row's Disabled, else each cell's Disabled field, as Run and OverflowItems do;
+// pass the same predicate as to Run (or set Disabled), so a cell that looks
+// inert is. A host draws whatever else shares the
 // row (a prefix, a status, a filter field) after Draw, into the columns Layout
 // left free. A rect that is not one row high draws nothing.
 //
@@ -258,9 +338,7 @@ func (tr *ToolRow) Draw(s tcell.Screen, r core.Rect, disabled func(int) bool, mo
 	if r.H != 1 {
 		return
 	}
-	if disabled == nil {
-		disabled = func(i int) bool { return tr.Cells[i].Disabled }
-	}
+	disabled = tr.disabledFn(disabled)
 	dim := theme.StyleTooltip().Foreground(theme.Active().TextDim)
 	core.FillRect(s, r, ' ', theme.StyleMenuBar())
 	for i, c := range tr.Cells {

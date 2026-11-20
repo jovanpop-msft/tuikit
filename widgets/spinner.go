@@ -13,8 +13,8 @@ import (
 //
 // Unlike the other widgets it is a value: no bounds, start time or timer, just
 // a function of elapsed time. That keeps to the tuikit rule that a control never
-// spawns a goroutine; the host's redraw clock (ticker, elapsed-timer tick)
-// passes the elapsed duration in.
+// spawns a goroutine; the host's redraw clock (loop.Runner.Tick waking the
+// loop at Period) repaints it, and the draw passes the elapsed duration in.
 //
 // Every frame has the same display width, so drawing one over the last leaves
 // no stale cell. Width reports it and TestSpinnerFramesAreUniformWidth pins it
@@ -28,6 +28,16 @@ type Spinner struct {
 // defaultSpinnerPeriod backs a Spinner built without one, so a zero Period
 // animates slowly rather than dividing by zero.
 const defaultSpinnerPeriod = 120 * time.Millisecond
+
+// Interval is the time each frame is actually held: Period, or the default a
+// zero Period animates at. It is the period to hand the redraw clock
+// (loop.Runner.Tick), whose ticker panics on a zero one.
+func (sp Spinner) Interval() time.Duration {
+	if sp.Period <= 0 {
+		return defaultSpinnerPeriod
+	}
+	return sp.Period
+}
 
 // Width is the display width of every frame, or 0 for a Spinner with none.
 func (sp Spinner) Width() int {
@@ -47,11 +57,7 @@ func (sp Spinner) Frame(elapsed time.Duration) string {
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	period := sp.Period
-	if period <= 0 {
-		period = defaultSpinnerPeriod
-	}
-	return sp.Frames[int(elapsed/period)%len(sp.Frames)]
+	return sp.Frames[int(elapsed/sp.Interval())%len(sp.Frames)]
 }
 
 // Draw paints the frame for elapsed at x, y, padded to Width so a caller's own

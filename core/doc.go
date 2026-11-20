@@ -22,6 +22,8 @@
 //   - control.go     — the control interfaces: Focusable, Enabler, Bounded,
 //     KeyHandler, MouseHandler, Overlay
 //   - gesture.go     — Gesture, a mouse router's claimed-zone record
+//   - drag.go        — Drag, a drag-and-drop gesture carrying a payload, with
+//     a start threshold and a ghost drawn beside the pointer
 //   - tabstrip.go    — TabStripSegments/TabLabelWidth, the column layout every
 //     tab bar draws and hit-tests with, so the two can't drift apart
 //   - mathutil.go    — Clamp

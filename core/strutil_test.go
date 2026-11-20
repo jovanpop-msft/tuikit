@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -152,6 +153,114 @@ func TestFormatThousands(t *testing.T) {
 	for _, c := range cases {
 		if got := FormatThousands(c.n); got != c.want {
 			t.Errorf("FormatThousands(%d) = %q, want %q", c.n, got, c.want)
+		}
+	}
+}
+
+func TestParseFormattedNumber(t *testing.T) {
+	for in, want := range map[string]bool{
+		"1,234": true, "12 MB": true, "-3": true, "45%": true, "0.5": true,
+		"dbo.t": false, "Inf": false, "NaN": false, "16.0.4135.4": false,
+		"2026-01-02 10:00:00": false, "0x1p3": false, "ONLINE": false,
+		"": false, "1_000": false, "MB": false,
+	} {
+		if _, ok := ParseFormattedNumber(in); ok != want {
+			t.Errorf("ParseFormattedNumber(%q) ok = %v, want %v", in, ok, want)
+		}
+	}
+	// Non-byte units are stripped, not scaled.
+	if n, _ := ParseFormattedNumber("250 ms"); n != 250 {
+		t.Errorf(`ParseFormattedNumber("250 ms") = %v, want 250`, n)
+	}
+	if n, _ := ParseFormattedNumber("4.0 KB"); n != 4096 {
+		t.Errorf(`ParseFormattedNumber("4.0 KB") = %v, want 4096`, n)
+	}
+}
+
+// ParseFormattedNumber is FormatBytes' and FormatThousands' inverse, so the
+// pair can't drift apart: every unit FormatBytes writes reads back as bytes
+// (within its one-decimal rounding), in the same order as the sizes, and
+// FormatThousands reads back exactly.
+func TestParseFormattedNumberRoundTrips(t *testing.T) {
+	var sizes []int64
+	for shift := 0; shift < 63; shift++ {
+		for _, f := range []float64{1, 1.3, 1.5, 1.95, 3, 7.9} {
+			if v := f * float64(int64(1)<<shift); v < math.MaxInt64 {
+				sizes = append(sizes, int64(v))
+			}
+		}
+	}
+	sizes = append(sizes, 0, 512, 1023, math.MaxInt64)
+	slices.Sort(sizes)
+	prev := -1.0
+	for _, n := range sizes {
+		s := FormatBytes(n)
+		got, ok := ParseFormattedNumber(s)
+		if !ok {
+			t.Fatalf("ParseFormattedNumber(FormatBytes(%d) = %q) is not a number", n, s)
+		}
+		if diff := math.Abs(got - float64(n)); diff > 0.05*float64(n)+0.5 {
+			t.Errorf("FormatBytes(%d) = %q reads back as %v", n, s, got)
+		}
+		if got < prev {
+			t.Errorf("FormatBytes(%d) = %q reads back as %v, below the smaller size's %v", n, s, got, prev)
+		}
+		prev = got
+	}
+	for _, n := range []int64{0, 7, -42, 1234, -1234567, math.MaxInt64 / 1024} {
+		s := FormatThousands(n)
+		if got, ok := ParseFormattedNumber(s); !ok || got != float64(n) {
+			t.Errorf("ParseFormattedNumber(FormatThousands(%d) = %q) = %v, %v", n, s, got, ok)
+		}
+	}
+}
+
+func TestFormatClock(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "00:00:00"},
+		{-time.Second, "00:00:00"},            // a clock skew must not print "-1:59:59"
+		{1500 * time.Millisecond, "00:00:01"}, // truncates: a live timer must not run ahead
+		{time.Hour + 2*time.Minute + 3*time.Second, "01:02:03"},
+		{100 * time.Hour, "100:00:00"}, // hours are not clamped to two digits
+	}
+	for _, c := range cases {
+		if got := FormatClock(c.d); got != c.want {
+			t.Errorf("FormatClock(%v) = %q, want %q", c.d, got, c.want)
+		}
+	}
+}
+
+func TestFormatBytes(t *testing.T) {
+	cases := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0 B"},
+		{500, "500 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1048576, "1.0 MB"},
+		{40 * 1024 * 1024, "40.0 MB"},
+		{5 * 1024 * 1024 * 1024, "5.0 GB"},
+		// The unit comes from the rounded value: one byte short of a unit
+		// boundary is "1.0 MB", never "1024.0 KB".
+		{1<<20 - 1, "1.0 MB"},
+		{1<<30 - 1, "1.0 GB"},
+		{1<<50 - 1, "1.0 PB"},
+		{1 << 50, "1.0 PB"},
+		{2 << 50, "2.0 PB"},
+		// Past TB: a sparse 2 PiB file once indexed past "KMGT" and panicked.
+		{1 << 60, "1.0 EB"},
+		{math.MaxInt64, "8.0 EB"},
+		{-1, "-1 B"},
+	}
+	for _, c := range cases {
+		if got := FormatBytes(c.n); got != c.want {
+			t.Errorf("FormatBytes(%d) = %q, want %q", c.n, got, c.want)
 		}
 	}
 }
@@ -469,5 +578,27 @@ func TestSafeFileNameCapsLengthOnARuneBoundary(t *testing.T) {
 	}
 	if n := 2*safeFileNameMax + len(".sqlplan") + 1; n > 255 {
 		t.Errorf("two capped names plus an extension are %d bytes, over 255", n)
+	}
+}
+
+func TestMatchesAny(t *testing.T) {
+	cases := []struct {
+		term   string
+		fields []string
+		want   bool
+	}{
+		{"", []string{"anything"}, true},
+		{"  ", []string{"anything"}, true},
+		{"", nil, true},
+		{"sel", []string{"SELECT"}, true},
+		{" SEL ", []string{"select"}, true},
+		{"role", []string{"app_reader", "DATABASE_ROLE"}, true},
+		{"zzz", []string{"app_reader", "DATABASE_ROLE"}, false},
+		{"x", nil, false},
+	}
+	for _, c := range cases {
+		if got := MatchesAny(c.term, c.fields...); got != c.want {
+			t.Errorf("MatchesAny(%q, %q) = %v, want %v", c.term, c.fields, got, c.want)
+		}
 	}
 }

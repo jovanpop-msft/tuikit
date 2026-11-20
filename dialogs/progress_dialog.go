@@ -32,9 +32,13 @@ func progressButtons() []string { return []string{Strings.Cancel} }
 // happening, a spinner and the elapsed time, with a single Cancel button; nothing
 // else is reachable until the host hides it.
 //
-// It runs nothing itself. The host starts the work, calls SetMessage as it
-// progresses, drives the redraw at Spinner.Period (the spinner is drawn from
-// elapsed time, see widgets.Spinner), and calls Hide when the work returns.
+// Run is the usual way to drive it: it runs the work on the host's
+// loop.Runner, posts reports and the result through its loop.Poster, keeps
+// the redraw clock, refuses a second job while one is up, and releases the
+// dialog on a panic too. A host driving it by hand starts the work, calls
+// SetMessage as it progresses, drives the redraw at Spinner.Interval (the
+// spinner is drawn from elapsed time, see widgets.Spinner; loop.Runner.Tick is
+// that clock), and calls Hide when the work returns.
 // Cancel does not close the dialog: it calls the showing's onCancel and switches
 // to "Cancelling...", because what the operation got through is known only once
 // it returns, and hiding earlier would claim it was over.
@@ -53,6 +57,11 @@ type ProgressDialog struct {
 	reason      string
 	reasonLines []string
 	cancelling  bool
+
+	// running is set while a Run job holds the dialog; runSeq numbers the jobs,
+	// so a late report cannot rewrite a later job's message (progress_run.go).
+	running bool
+	runSeq  int
 
 	// Spinner is the busy indicator; the host redraws at its Period.
 	Spinner widgets.Spinner
