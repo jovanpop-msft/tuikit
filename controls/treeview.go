@@ -368,8 +368,11 @@ func (tv *TreeView) Draw(s tcell.Screen) {
 
 // HandleKey handles keyboard events. It reports true only when the key moved
 // the selection or scroll, expanded or collapsed a node, or fired a callback:
-// Up on the first node, Left on a collapsed one or any key on an empty tree
-// answer false, so the host can use the key itself.
+// Up on the first node, Left on a collapsed top-level node or any key on an
+// empty tree answer false, so the host can use the key itself.
+//
+// Left and Backspace act as in Windows Explorer's tree: an expanded node
+// collapses, otherwise the selection jumps to the parent. '-' only collapses.
 func (tv *TreeView) HandleKey(ev *tcell.EventKey) bool {
 	inner := tv.rect.Inner(1)
 	switch ev.Key() {
@@ -400,7 +403,7 @@ func (tv *TreeView) HandleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyRight:
 		return tv.expandSelected()
 	case tcell.KeyLeft, tcell.KeyBackspace, tcell.KeyBackspace2:
-		return tv.collapseSelected()
+		return tv.collapseSelected() || tv.selectParent(inner.H)
 	case tcell.KeyF10:
 		// Shift+F10 is the cross-platform "open context menu" convention and the
 		// binding most macOS terminal apps use (no dedicated context-menu key).
@@ -723,6 +726,24 @@ func (tv *TreeView) collapseSelected() bool {
 		tv.OnCollapse(n.ID)
 	}
 	return true
+}
+
+// selectParent moves the selection to the selected node's parent, scrolled
+// into an h-row view, and reports whether it moved. The parent is the nearest
+// row above with a smaller Depth: nodes is the flattened visible list, so a
+// shown child's parent always precedes it, and Depth needs no ID lookup (a
+// top-level node's Parent is the zero ID, which may be a real node's).
+func (tv *TreeView) selectParent(h int) bool {
+	n := tv.SelectedNode()
+	if n == nil {
+		return false
+	}
+	for i := tv.sel - 1; i >= 0; i-- {
+		if tv.nodes[i].Depth < n.Depth {
+			return tv.moveTo(i, h)
+		}
+	}
+	return false
 }
 
 // ensureVisible scrolls the selection into an h-row view. It does nothing for

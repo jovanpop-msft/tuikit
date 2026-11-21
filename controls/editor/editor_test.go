@@ -773,6 +773,17 @@ func TestEditorUndoRestoresEveryEditPath(t *testing.T) {
 			e.ReplaceAll()
 		}},
 		{"replace text", func(e *Editor) { e.cursorRow, e.cursorCol = 3, 4; e.ReplaceText("SELECT 1\n\nGO") }},
+		{"commit a multi-line completion (single candidate)", func(e *Editor) {
+			e.SetCompletionProvider(testCompletionProvider("two\nlines\r\nthree"))
+			e.cursorRow, e.cursorCol = 1, len(e.doc.Line(1))
+			e.HandleKey(tuikittest.Rune(' ', tcell.ModCtrl))
+		}},
+		{"commit a multi-line completion (popup)", func(e *Editor) {
+			e.SetCompletionProvider(testCompletionProvider("t\nx", "tw\ny"))
+			e.cursorRow, e.cursorCol = 1, len(e.doc.Line(1))-2 // "t|wo": both match, the popup opens
+			e.HandleKey(tuikittest.Rune(' ', tcell.ModCtrl))
+			e.HandleKey(tuikittest.Key(tcell.KeyEnter, tcell.ModNone))
+		}},
 		{"replace selected lines", func(e *Editor) {
 			e.selecting, e.selAnchorRow, e.selAnchorCol = true, 1, 6
 			e.cursorRow, e.cursorCol = 3, 2

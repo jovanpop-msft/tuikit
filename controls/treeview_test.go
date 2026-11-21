@@ -1003,3 +1003,50 @@ func TestTreeViewSetBoundsTallerReclampsScroll(t *testing.T) {
 		t.Fatalf("sel = %d, SetBounds must not move the selection", tv.sel)
 	}
 }
+
+// TestLeftJumpsToParent pins Explorer-style Left: an expanded node collapses
+// first, a collapsed node or a leaf moves the selection to its parent (firing
+// OnSelect), and a top-level node answers false so the host keeps the key.
+func TestLeftJumpsToParent(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetBounds(0, 0, 40, 10)
+	tv.SetNodes([]TreeNode{
+		{ID: 1, Label: "server", Depth: 0, HasKids: true, Expanded: true},
+		{ID: 2, Label: "Databases", Depth: 1, Parent: 1, HasKids: true, Expanded: true},
+		{ID: 3, Label: "master", Depth: 2, Parent: 2},
+		{ID: 4, Label: "model", Depth: 2, Parent: 2},
+		{ID: 5, Label: "Security", Depth: 1, Parent: 1, HasKids: true},
+	})
+	var selected []TreeNodeID
+	tv.OnSelect = func(id TreeNodeID) { selected = append(selected, id) }
+	left := func() bool { return tv.HandleKey(tcell.NewEventKey(tcell.KeyLeft, "", tcell.ModNone)) }
+
+	tv.SelectID(4)
+	selected = nil
+	if !left() || tv.SelectedNode().ID != 2 {
+		t.Fatalf("Left on leaf 'model': selected %d, want parent 2", tv.SelectedNode().ID)
+	}
+	if !left() || tv.nodes[1].Expanded == true || tv.SelectedNode().ID != 2 {
+		t.Fatalf("Left on expanded 'Databases' should collapse it in place; sel=%d expanded=%v",
+			tv.SelectedNode().ID, tv.nodes[1].Expanded)
+	}
+	if !left() || tv.SelectedNode().ID != 1 {
+		t.Fatalf("Left on collapsed 'Databases': selected %d, want parent 1", tv.SelectedNode().ID)
+	}
+	if got := fmt.Sprint(selected); got != "[2 1]" {
+		t.Errorf("OnSelect fired for %s, want [2 1]", got)
+	}
+
+	tv.SelectID(5)
+	if !left() || tv.SelectedNode().ID != 1 {
+		t.Fatalf("Left on collapsed 'Security': selected %d, want parent 1", tv.SelectedNode().ID)
+	}
+	tv.nodes[0].Expanded = false
+	tv.SetNodes(tv.nodes[:1])
+	if left() {
+		t.Error("Left on a collapsed top-level node returned true; want false so the host keeps the key")
+	}
+	if tv.HandleKey(tcell.NewEventKey(tcell.KeyRune, "-", tcell.ModNone)) {
+		t.Error("'-' on a collapsed node returned true; '-' only collapses")
+	}
+}

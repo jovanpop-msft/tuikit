@@ -146,6 +146,32 @@ func TestLogDialogTrimsTheEditorAtMax(t *testing.T) {
 	}
 }
 
+// Multi-line records arriving while the dialog is open must leave the editor
+// as a fresh Show would: the trim follows the records kept, not Max lines.
+// Recorded from a goroutine; run with -race.
+func TestLogDialogSyncKeepsWholeMultiLineRecords(t *testing.T) {
+	d, scr := newTestLog(t, LogDialogSpec{Max: 4})
+	d.Show()
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := range 40 {
+			line := "msg " + strconv.Itoa(i)
+			if i%3 == 0 {
+				line += "\n  detail A\r\n  detail B"
+			}
+			d.Record(line)
+		}
+	})
+	for range 20 {
+		d.Draw(scr)
+	}
+	wg.Wait()
+	d.Draw(scr)
+	if got, want := d.Editor().Text(), strings.Join(d.Lines(), "\n"); got != strings.ReplaceAll(want, "\r\n", "\n") {
+		t.Errorf("synced editor = %q, want the retained records %q", got, want)
+	}
+}
+
 // Record from several goroutines while the UI goroutine draws. Run with -race.
 func TestLogDialogRecordIsSafeFromBackgroundGoroutines(t *testing.T) {
 	d, scr := newTestLog(t, LogDialogSpec{Max: 256})
