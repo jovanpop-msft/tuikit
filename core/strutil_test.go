@@ -168,7 +168,7 @@ func TestParseFormattedNumber(t *testing.T) {
 		"1,234.5,6": false, "-1,234,567.5": true, "+3": true,
 		"-.5": true, ".5": true,
 		"1e5": false, "12e4": false, "1E3": false, "5e-2 ms": false,
-		"007": false, "-007": false, "00": false, "0": true, "-0.5": true,
+		"007": false, "-007": false, "00": false, "0,500": false, "-0,123": false, "0": true, "-0.5": true,
 		"4.0 KB": true, "250 ms": true, "0.05": true,
 	} {
 		if _, ok := ParseFormattedNumber(in); ok != want {

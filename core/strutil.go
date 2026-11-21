@@ -613,7 +613,7 @@ func ParseFormattedNumber(s string) (float64, bool) {
 	if strings.ContainsAny(body, "eE") {
 		return 0, false
 	}
-	if len(body) > 1 && body[0] == '0' && body[1] != '.' && body[1] != ',' {
+	if len(body) > 1 && body[0] == '0' && body[1] != '.' {
 		return 0, false
 	}
 	if strings.Contains(body, ",") {

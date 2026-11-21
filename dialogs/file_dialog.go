@@ -377,13 +377,18 @@ func (d *FileDialog) navigateTyped() {
 }
 
 // trimDotDot reports whether path ends in a ".." element and returns the path
-// before it, or "" for a bare "..".
+// before it, or "" for a bare "..". A root's ".." ("/..", `\..`) returns the
+// root itself: "" would be the drive list on Windows and "." (the working
+// directory) elsewhere.
 func trimDotDot(path string) (string, bool) {
 	if path == ".." {
 		return "", true
 	}
 	for _, sep := range []string{`\`, "/"} {
 		if base, ok := strings.CutSuffix(path, sep+".."); ok {
+			if base == "" {
+				base = sep
+			}
 			return base, true
 		}
 	}

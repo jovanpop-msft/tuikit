@@ -63,3 +63,16 @@ func TestConfirmChoiceDirectoryNavigates(t *testing.T) {
 		}
 	}
 }
+
+// A typed root's ".." stays at the root, as the ".." row does there; it used
+// to fall through Parent("") to the working directory.
+func TestTrimDotDotAtRoot(t *testing.T) {
+	for path, want := range map[string]string{"/..": "/", `\..`: `\`, "/a/..": "/a", `C:\a\..`: `C:\a`, "..": ""} {
+		if got, ok := trimDotDot(path); !ok || got != want {
+			t.Errorf("trimDotDot(%q) = %q, %v; want %q", path, got, ok, want)
+		}
+	}
+	if _, ok := trimDotDot("/a/b"); ok {
+		t.Error(`trimDotDot("/a/b") matched`)
+	}
+}
