@@ -184,6 +184,9 @@ type Editor struct {
 	// completionExplicit marks a popup opened by Ctrl+Space, which always keeps a
 	// selection; cleared when it closes.
 	completionExplicit bool
+	// completionPicked marks a selection moved with Up/Down since the items last
+	// changed: Enter then commits even a Soft candidate.
+	completionPicked bool
 
 	// completionSuppressed, set by Escape, stops the popup reopening at the token it
 	// was dismissed at; completionSuppressRow/Col pin that token's start. Moving off

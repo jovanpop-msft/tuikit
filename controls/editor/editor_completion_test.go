@@ -568,6 +568,72 @@ func TestEditorCompletionPartialOnlyDownSelectsThenCommits(t *testing.T) {
 	}
 }
 
+func softCompletionProvider(candidates ...string) CompletionProvider {
+	inner := substringCompletionProvider(candidates...)
+	return func(req CompletionRequest) ([]CompletionItem, int) {
+		items, from := inner(req)
+		for i := range items {
+			items[i].Soft = true
+		}
+		return items, from
+	}
+}
+
+// A preselected Soft candidate (an alias that a keyword also starts with):
+// Enter is a newline, Tab commits.
+func TestEditorCompletionSoftEnterIsNewlineTabCommits(t *testing.T) {
+	e := newTestEditor("")
+	e.SetCompletionProvider(softCompletionProvider("OUTER APPLY"))
+	typeString(e, "o")
+	if !e.OverlayActive() || e.completionSel != 0 {
+		t.Fatalf("open = %v sel = %d, want open at 0", e.OverlayActive(), e.completionSel)
+	}
+	e.HandleKey(tuikittest.Key(tcell.KeyEnter, tcell.ModNone))
+	if got := e.Text(); got != "o\n" || e.OverlayActive() {
+		t.Fatalf("Enter: Text() = %q open = %v, want %q closed", got, e.OverlayActive(), "o\n")
+	}
+
+	e = newTestEditor("")
+	e.SetCompletionProvider(softCompletionProvider("OUTER APPLY"))
+	typeString(e, "o")
+	e.HandleKey(tuikittest.Key(tcell.KeyTab, tcell.ModNone))
+	if got := e.Text(); got != "OUTER APPLY" {
+		t.Fatalf("Tab: Text() = %q, want OUTER APPLY", got)
+	}
+}
+
+// Choosing a Soft candidate with Up/Down, or opening with Ctrl+Space, makes
+// Enter commit it; typing again returns to suggestion mode.
+func TestEditorCompletionSoftPickedOrExplicitCommitsOnEnter(t *testing.T) {
+	e := newTestEditor("")
+	e.SetCompletionProvider(softCompletionProvider("ORDER BY", "OUTER APPLY"))
+	typeString(e, "o")
+	e.HandleKey(tuikittest.Key(tcell.KeyDown, tcell.ModNone))
+	e.HandleKey(tuikittest.Key(tcell.KeyEnter, tcell.ModNone))
+	if got := e.Text(); got != "OUTER APPLY" {
+		t.Fatalf("Down+Enter: Text() = %q, want OUTER APPLY", got)
+	}
+
+	e = newTestEditor("")
+	e.SetCompletionProvider(softCompletionProvider("ORDER BY", "OUTER APPLY"))
+	typeString(e, "o")
+	e.HandleKey(tuikittest.Key(tcell.KeyDown, tcell.ModNone))
+	typeString(e, "u")
+	e.HandleKey(tuikittest.Key(tcell.KeyEnter, tcell.ModNone))
+	if got := e.Text(); got != "ou\n" {
+		t.Fatalf("Down, type, Enter: Text() = %q, want %q", got, "ou\n")
+	}
+
+	e = newTestEditor("o")
+	e.SetCompletionProvider(softCompletionProvider("ORDER BY", "OUTER APPLY"))
+	e.cursorCol = 1
+	e.HandleKey(tuikittest.Rune(' ', tcell.ModCtrl))
+	e.HandleKey(tuikittest.Key(tcell.KeyEnter, tcell.ModNone))
+	if got := e.Text(); got != "ORDER BY" {
+		t.Fatalf("Ctrl+Space+Enter: Text() = %q, want ORDER BY", got)
+	}
+}
+
 // A prefix match anywhere in the list keeps the usual preselection; typing on
 // until only partial matches remain drops it.
 func TestEditorCompletionSelectionFollowsPrefixMatches(t *testing.T) {

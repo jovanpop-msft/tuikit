@@ -57,6 +57,13 @@ type CompletionItem struct {
 	// never swapped for a column that merely contains it (CreatedBy, BrandName).
 	// Up/Down select one as usual.
 	Partial bool
+	// Soft marks a candidate that may equally be the start of a new name the
+	// user is inventing (an alias "o" that OUTER APPLY also starts with). When
+	// the popup preselects it on its own, Tab commits it but Enter keeps its
+	// plain meaning and closes the popup — Visual Studio's suggestion mode. A
+	// selection made with Up/Down, or in a popup opened by Ctrl+Space, commits
+	// on Enter as usual.
+	Soft bool
 }
 
 // TextRevision identifies the revision of the text a CompletionRequest carries,
@@ -140,6 +147,7 @@ func (e *Editor) CloseCompletion() { e.closeCompletion() }
 func (e *Editor) closeCompletion() {
 	e.completionOpen = false
 	e.completionExplicit = false
+	e.completionPicked = false
 	e.setCompletionItems(nil, 0)
 	e.completionSel = 0
 	e.completionScroll = 0
@@ -183,6 +191,7 @@ func (e *Editor) updateCompletion() {
 	}
 	e.setCompletionItems(items, from)
 	e.completionClicks.Reset()
+	e.completionPicked = false
 	switch {
 	case !e.completionExplicit && !hasPrefixCompletion(items):
 		e.completionSel = -1
@@ -461,6 +470,11 @@ func (e *Editor) handleCompletionKey(ev *tcell.EventKey) bool {
 		e.moveCompletionSel(maxCompletionRows)
 		return true
 	case tcell.KeyTab, tcell.KeyEnter:
+		if ev.Key() == tcell.KeyEnter && e.softCompletionSelected() {
+			// Suggestion mode (CompletionItem.Soft): Enter is a newline.
+			e.closeCompletion()
+			return false
+		}
 		if e.completionSel < 0 {
 			// Nothing selected (see CompletionItem.Partial): the key keeps its plain
 			// meaning, and the popup closes rather than re-anchoring on the new line.
@@ -495,7 +509,16 @@ func (e *Editor) moveCompletionSel(delta int) {
 		i = e.firstSelectableCompletion(core.Clamp(e.completionSel+delta, 0, n-1), -dir)
 	}
 	e.completionSel = i
+	e.completionPicked = true
 	e.ensureCompletionVisible()
+}
+
+// softCompletionSelected reports whether the selection is a Soft candidate the
+// popup preselected on its own, which Enter does not commit.
+func (e *Editor) softCompletionSelected() bool {
+	return !e.completionExplicit && !e.completionPicked &&
+		e.completionSel >= 0 && e.completionSel < len(e.completionItems) &&
+		e.completionItems[e.completionSel].Soft
 }
 
 func (e *Editor) ensureCompletionVisible() {
