@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"strings"
 	"unicode"
 
 	"github.com/gdamore/tcell/v3"
@@ -19,8 +20,24 @@ import (
 // CompletionItem is one candidate offered by a CompletionProvider.
 type CompletionItem struct {
 	// Text is what gets inserted on commit, replacing the span the provider
-	// reported via replaceFrom.
+	// reported via replaceFrom. Newlines (\n, \r\n, \r) and tabs go in as
+	// typing or pasting them would: a newline starts a new line, a tab expands
+	// to IndentWidth spaces.
 	Text string
+	// ReplaceBefore extends the replaced span before replaceFrom by this many
+	// runes, counting newlines. Negative values are ignored; document start clamps it.
+	ReplaceBefore int
+	// ReplaceAfter extends the replaced span by this many runes after the
+	// cursor, counting newlines. Negative values are ignored; EOF clamps it.
+	ReplaceAfter int
+	// AppendSpace adds a separator after Text and leaves the cursor past it.
+	// A space already at the end of the replaced span is reused.
+	AppendSpace bool
+	// CursorOffset moves the cursor by this many runes from the end of the
+	// inserted text (after tab expansion and AppendSpace), across lines if
+	// needed, clamped to document bounds.
+	// Negative values position it inside inserted text, e.g. -1 for "AVG()".
+	CursorOffset int
 	// Label is the left column shown in the popup: usually Text, but a provider may
 	// show something more readable (a plain Label for a bracket-quoted Text).
 	Label string
@@ -284,7 +301,6 @@ func (e *Editor) triggerCompletionExplicit() {
 		}
 	}
 	if real == 1 && from < e.cursorCol && !items[realIdx].Partial {
-		e.pushUndoLocal()
 		e.commitCompletionItem(items[realIdx], from)
 		e.closeCompletion()
 		return
@@ -325,8 +341,14 @@ func (e *Editor) firstSelectableCompletion(start, dir int) int {
 	return start
 }
 
-// commitCompletionItem replaces [completionFrom, cursorCol) on the current
-// row with item.Text and leaves the cursor right after the inserted text.
+// commitCompletionItem replaces the provider's span — [from, cursorCol) on the
+// cursor's row, widened by ReplaceBefore/ReplaceAfter — with item.Text as one
+// undo step it pushes itself, then applies AppendSpace and CursorOffset.
+//
+// Text is split at its newlines (normalizeEOL) with its tabs expanded, exactly
+// as Paste does: spliced raw into the row, a "\n" in Text became one document
+// line holding a newline, which row numbering, the highlighter, search and
+// drawing all disagreed with.
 func (e *Editor) commitCompletionItem(item CompletionItem, from int) {
 	if item.Placeholder {
 		return
@@ -338,13 +360,56 @@ func (e *Editor) commitCompletionItem(item CompletionItem, from int) {
 	line := e.doc.Line(row)
 	from = core.Clamp(from, 0, len(line))
 	to := core.Clamp(e.cursorCol, from, len(line))
-	text := []rune(item.Text)
-	nl := make([]rune, 0, len(line)-(to-from)+len(text))
-	nl = append(nl, line[:from]...)
-	nl = append(nl, text...)
-	nl = append(nl, line[to:]...)
-	e.doc.setLine(row, nl)
-	e.cursorCol = from + len(text)
+	endRow := row
+	remaining := max(0, item.ReplaceAfter)
+	for endRow+1 < e.doc.Len() && remaining > len(e.doc.Line(endRow))-to {
+		remaining -= len(e.doc.Line(endRow)) - to + 1
+		endRow++
+		to = 0
+	}
+	endLine := e.doc.Line(endRow)
+	to += min(remaining, len(endLine)-to)
+	startRow := row
+	remaining = max(0, item.ReplaceBefore)
+	for startRow > 0 && remaining > from {
+		remaining -= from + 1
+		startRow--
+		from = len(e.doc.Line(startRow))
+	}
+	from -= min(remaining, from)
+	line = e.doc.Line(startRow)
+	parts := strings.Split(normalizeEOL(e.expandTabs(item.Text)), "\n")
+	if item.AppendSpace {
+		if to < len(endLine) && endLine[to] == ' ' {
+			to++
+		}
+		parts[len(parts)-1] += " "
+	}
+	with := make([][]rune, len(parts))
+	for i, part := range parts {
+		with[i] = []rune(part)
+	}
+	with[0] = append(append(make([]rune, 0, from+len(with[0])), line[:from]...), with[0]...)
+	last := len(with) - 1
+	target := len(with[last]) + item.CursorOffset
+	with[last] = append(with[last], endLine[to:]...)
+	e.pushUndoSpan(startRow, endRow+1)
+	if startRow == endRow && last == 0 {
+		e.doc.setLine(startRow, with[0])
+	} else {
+		e.doc.replaceRange(startRow, endRow-startRow+1, with)
+	}
+	row = startRow + last
+	for target < 0 && row > 0 {
+		row--
+		target += len(e.doc.Line(row)) + 1
+	}
+	for row+1 < e.doc.Len() && target > len(e.doc.Line(row)) {
+		target -= len(e.doc.Line(row)) + 1
+		row++
+	}
+	e.cursorRow = row
+	e.cursorCol = core.Clamp(target, 0, len(e.doc.Line(row)))
 	e.desiredCol = e.cursorDisplayCol()
 	e.ensureCursorVisible()
 }
@@ -360,7 +425,6 @@ func (e *Editor) commitSelectedCompletion() {
 	if item.Placeholder {
 		return
 	}
-	e.pushUndoLocal()
 	e.commitCompletionItem(item, e.completionFrom)
 	e.closeCompletion()
 }

@@ -104,6 +104,106 @@ func TestEditorCompletionTabAlsoCommits(t *testing.T) {
 	}
 }
 
+func TestEditorCompletionAppendsSeparator(t *testing.T) {
+	for _, tt := range []struct{ initial, want string }{
+		{"", "SELECT x"},
+		{" FROM t", "SELECT xFROM t"},
+	} {
+		t.Run(tt.initial, func(t *testing.T) {
+			e := newTestEditor(tt.initial)
+			e.SetCompletionProvider(func(req CompletionRequest) ([]CompletionItem, int) {
+				return []CompletionItem{{Text: "SELECT", Label: "SELECT", AppendSpace: true}}, 0
+			})
+			typeString(e, "sel")
+			e.HandleKey(tuikittest.Key(tcell.KeyTab, tcell.ModNone))
+			e.HandleKey(tuikittest.Rune('x', tcell.ModNone))
+			if got := e.Text(); got != tt.want {
+				t.Fatalf("Text() = %q, want %q", got, tt.want)
+			}
+			e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+			e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+			if got := e.Text(); got != "sel"+tt.initial {
+				t.Fatalf("undo Text() = %q, want original prefix and suffix", got)
+			}
+		})
+	}
+}
+
+func TestEditorCompletionPositionsCursorInCall(t *testing.T) {
+	for _, tt := range []struct {
+		suffix, text, want string
+		offset             int
+		replaceAfter       int
+	}{
+		{"", "AVG()", "AVG(x)", -1, 0},
+		{"()", "AVG", "AVG(x)", 1, 0},
+		{"\n()", "AVG", "AVG\n(x)", 2, 0},
+		{"", "Føø()", "Føø(x)", -1, 0},
+		{" SETS", "GROUPING SETS()", "GROUPING SETS(x)", -1, 5},
+		{" /*ø*/\nSETS keep", "GROUPING /*ø*/\nSETS()", "GROUPING /*ø*/\nSETS(x) keep", -1, len([]rune(" /*ø*/\nSETS"))},
+		{" tail", "AVG()", "AVG(x)", -1, 1000},
+		{"()", "AVG", "AVG(x)", 1, -5},
+	} {
+		t.Run(tt.suffix, func(t *testing.T) {
+			e := newTestEditor(tt.suffix)
+			e.SetCompletionProvider(func(req CompletionRequest) ([]CompletionItem, int) {
+				return []CompletionItem{{Text: tt.text, Label: "AVG", CursorOffset: tt.offset, ReplaceAfter: tt.replaceAfter}}, 0
+			})
+			typeString(e, "av")
+			e.HandleKey(tuikittest.Key(tcell.KeyTab, tcell.ModNone))
+			typeString(e, "x")
+			if got := e.Text(); got != tt.want {
+				t.Fatalf("Text() = %q, want %q", got, tt.want)
+			}
+			e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+			e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+			if got := e.Text(); got != "av"+tt.suffix {
+				t.Fatalf("undo Text() = %q, want original prefix and suffix", got)
+			}
+		})
+	}
+}
+
+func TestEditorCompletionReplacesBeforePrefixAcrossLines(t *testing.T) {
+	for _, tt := range []struct {
+		before, suffix, text, want string
+		remove                     int
+	}{
+		{"keep cols ", " tail", "F(cols)", "keep F(cols) tail", len("cols ")},
+		{"keep\nøø,\n xx ", " tail", "F(øø,\n xx)", "keep\nF(øø,\n xx) tail", len([]rune("øø,\n xx "))},
+		{"old\ntext ", " tail", "F()", "F() tail", 1000},
+		{"keep ", " tail", "F()", "keep F() tail", -1},
+	} {
+		for _, accept := range []tcell.Key{tcell.KeyTab, tcell.KeyEnter} {
+			t.Run(tt.before, func(t *testing.T) {
+				e := newTestEditor(tt.before + tt.suffix)
+				e.HandleKey(tuikittest.Key(tcell.KeyEnd, tcell.ModCtrl))
+				for range []rune(tt.suffix) {
+					e.HandleKey(tuikittest.Key(tcell.KeyLeft, tcell.ModNone))
+				}
+				e.SetCompletionProvider(func(req CompletionRequest) ([]CompletionItem, int) {
+					return []CompletionItem{{Text: tt.text, ReplaceBefore: tt.remove}}, DefaultWordStart(req.Lines[req.Row], req.Col)
+				})
+				typeString(e, "ro")
+				e.HandleKey(tuikittest.Key(accept, tcell.ModNone))
+				if got := e.Text(); got != tt.want {
+					t.Fatalf("Text() = %q, want %q", got, tt.want)
+				}
+				typeString(e, "x")
+				e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+				e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+				if got := e.Text(); got != tt.before+"ro"+tt.suffix {
+					t.Fatalf("undo Text() = %q", got)
+				}
+				e.HandleKey(tuikittest.Key(tcell.KeyCtrlY, tcell.ModNone))
+				if got := e.Text(); got != tt.want {
+					t.Fatalf("redo Text() = %q, want %q", got, tt.want)
+				}
+			})
+		}
+	}
+}
+
 func TestEditorCompletionEscapeDismissesAndSuppresses(t *testing.T) {
 	e := newTestEditor("")
 	e.SetCompletionProvider(testCompletionProvider("Customers"))
