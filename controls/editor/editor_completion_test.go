@@ -212,6 +212,7 @@ func TestEditorCompletionEscapeDismissesAndSuppresses(t *testing.T) {
 	if !e.OverlayActive() {
 		t.Fatal("expected popup open")
 	}
+
 	e.HandleKey(tuikittest.Key(tcell.KeyEscape, tcell.ModNone))
 	if e.OverlayActive() {
 		t.Fatal("expected popup closed after Escape")

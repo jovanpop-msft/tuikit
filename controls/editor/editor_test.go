@@ -756,6 +756,13 @@ func TestEditorUndoRestoresEveryEditPath(t *testing.T) {
 			e.cursorRow, e.cursorCol = 3, 4
 			e.HandleKey(tuikittest.Key(tcell.KeyDelete, tcell.ModNone))
 		}},
+		{"completion spanning lines", func(e *Editor) {
+			e.SetCompletionProvider(func(CompletionRequest) ([]CompletionItem, int) {
+				return []CompletionItem{{Text: "x\r\n\ty", ReplaceBefore: 3, ReplaceAfter: 6, AppendSpace: true, CursorOffset: -2}}, 2
+			})
+			e.cursorRow, e.cursorCol = 2, 4
+			e.HandleKey(tuikittest.Rune(' ', tcell.ModCtrl))
+		}},
 		{"replace current", func(e *Editor) {
 			e.SetSearch(SearchOptions{Query: "two", Replace: "II"})
 			e.FindNext(1)

@@ -20,7 +20,9 @@ import (
 // CompletionItem is one candidate offered by a CompletionProvider.
 type CompletionItem struct {
 	// Text is what gets inserted on commit, replacing the span the provider
-	// reported via replaceFrom.
+	// reported via replaceFrom. Newlines (\n, \r\n, \r) and tabs go in as
+	// typing or pasting them would: a newline starts a new line, a tab expands
+	// to IndentWidth spaces.
 	Text string
 	// ReplaceBefore extends the replaced span before replaceFrom by this many
 	// runes, counting newlines. Negative values are ignored; document start clamps it.
@@ -32,7 +34,8 @@ type CompletionItem struct {
 	// A space already at the end of the replaced span is reused.
 	AppendSpace bool
 	// CursorOffset moves the cursor by this many runes from the end of the
-	// inserted text, across lines if needed, clamped to document bounds.
+	// inserted text (after tab expansion and AppendSpace), across lines if
+	// needed, clamped to document bounds.
 	// Negative values position it inside inserted text, e.g. -1 for "AVG()".
 	CursorOffset int
 	// Label is the left column shown in the popup: usually Text, but a provider may
@@ -338,8 +341,14 @@ func (e *Editor) firstSelectableCompletion(start, dir int) int {
 	return start
 }
 
-// commitCompletionItem replaces the provider's span as one undo step, then
-// applies its separator and cursor offset.
+// commitCompletionItem replaces the provider's span — [from, cursorCol) on the
+// cursor's row, widened by ReplaceBefore/ReplaceAfter — with item.Text as one
+// undo step it pushes itself, then applies AppendSpace and CursorOffset.
+//
+// Text is split at its newlines (normalizeEOL) with its tabs expanded, exactly
+// as Paste does: spliced raw into the row, a "\n" in Text became one document
+// line holding a newline, which row numbering, the highlighter, search and
+// drawing all disagreed with.
 func (e *Editor) commitCompletionItem(item CompletionItem, from int) {
 	if item.Placeholder {
 		return
@@ -369,14 +378,13 @@ func (e *Editor) commitCompletionItem(item CompletionItem, from int) {
 	}
 	from -= min(remaining, from)
 	line = e.doc.Line(startRow)
-	text := []rune(item.Text)
+	parts := strings.Split(normalizeEOL(e.expandTabs(item.Text)), "\n")
 	if item.AppendSpace {
 		if to < len(endLine) && endLine[to] == ' ' {
 			to++
 		}
-		text = append(text, ' ')
+		parts[len(parts)-1] += " "
 	}
-	parts := strings.Split(string(text), "\n")
 	with := make([][]rune, len(parts))
 	for i, part := range parts {
 		with[i] = []rune(part)
