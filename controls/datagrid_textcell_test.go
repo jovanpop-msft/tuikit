@@ -73,3 +73,24 @@ func TestClassifyTextCell(t *testing.T) {
 		}
 	}
 }
+
+// A signed Inf or a malformed digit grouping is a name or a list, not a number.
+func TestNewTextCellKeyNotNumber(t *testing.T) {
+	for _, in := range []string{"-inf", "+Inf", "1,2,3", "1,5"} {
+		if k := NewTextCellKey(in); k.isNum {
+			t.Errorf("NewTextCellKey(%q) read as a number", in)
+		}
+	}
+}
+
+// Codes that merely look numeric ("12e4", "007") are text: they sort after the
+// numbers, not among them.
+func TestCompareTextCellsCodesAreText(t *testing.T) {
+	cells := []string{"12e4", "5", "007", "100"}
+	slices.SortFunc(cells, func(a, b string) int {
+		return CompareTextCells(NewTextCellKey(a), NewTextCellKey(b), false)
+	})
+	if want := []string{"5", "100", "007", "12e4"}; !slices.Equal(cells, want) {
+		t.Errorf("sorted = %v, want %v", cells, want)
+	}
+}

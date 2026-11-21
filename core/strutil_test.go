@@ -163,6 +163,13 @@ func TestParseFormattedNumber(t *testing.T) {
 		"dbo.t": false, "Inf": false, "NaN": false, "16.0.4135.4": false,
 		"2026-01-02 10:00:00": false, "0x1p3": false, "ONLINE": false,
 		"": false, "1_000": false, "MB": false,
+		"+Inf": false, "-inf": false, "+Infinity": false, "1,2,3": false,
+		"1,,2": false, ",5": false, "-,5": false, "1,5": false, "12,34": false,
+		"1,234.5,6": false, "-1,234,567.5": true, "+3": true,
+		"-.5": true, ".5": true,
+		"1e5": false, "12e4": false, "1E3": false, "5e-2 ms": false,
+		"007": false, "-007": false, "00": false, "0": true, "-0.5": true,
+		"4.0 KB": true, "250 ms": true, "0.05": true,
 	} {
 		if _, ok := ParseFormattedNumber(in); ok != want {
 			t.Errorf("ParseFormattedNumber(%q) ok = %v, want %v", in, ok, want)
@@ -603,6 +610,9 @@ func TestSafeFileName(t *testing.T) {
 		"COM¹":                "_COM¹",
 		"PRN ":                "_PRN",
 		"CONSOLE":             "CONSOLE",
+		"CONOUT$":             "_CONOUT$",
+		"conin$.txt":          "_conin$.txt",
+		"CONIN$x":             "CONIN$x",
 		"COM10":               "COM10",
 		"LPT":                 "LPT",
 		"xCON":                "xCON",
