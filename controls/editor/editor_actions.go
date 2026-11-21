@@ -453,10 +453,10 @@ func (e *Editor) transformSelection(fn func(rune) rune) {
 	}
 	if e.selBlock {
 		topRow, botRow := min(e.selAnchorRow, e.cursorRow), max(e.selAnchorRow, e.cursorRow)
-		loCol, hiCol := e.blockColumnBounds()
+		loX, hiX := e.blockXBounds()
 		for r := topRow; r <= botRow; r++ {
-			n := len(e.doc.Line(r))
-			apply(r, core.Clamp(loCol, 0, n), core.Clamp(hiCol, 0, n))
+			lo, hi := e.blockRuneRange(r, loX, hiX)
+			apply(r, lo, hi)
 		}
 		return
 	}

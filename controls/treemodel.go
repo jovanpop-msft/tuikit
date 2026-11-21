@@ -1,5 +1,7 @@
 package controls
 
+import "slices"
+
 // TreeItem is the bookkeeping a TreeModel keeps in every node of a lazily
 // loaded tree. A host's node type embeds it by value, which makes a pointer to
 // that type a TreeModelNode:
@@ -184,27 +186,26 @@ func (m *TreeModel[N]) AddRoot(n N) {
 	m.Select(n)
 }
 
-// RemoveRoot removes root n and its subtree, then rebuilds. A selection inside
-// it goes to whichever row the TreeView's clamp leaves selected.
+// RemoveRoot removes root n and its subtree, then rebuilds. Every node in it
+// is retired (OnRetire, so its in-flight load is cancelled and a late
+// SetChildren refused), and the Rebuild releases them (OnRelease). A selection
+// inside it goes to whichever row the TreeView's clamp leaves selected.
 func (m *TreeModel[N]) RemoveRoot(n N) {
-	i := -1
-	for j, r := range m.roots {
-		if r == n {
-			i = j
-		}
-	}
+	i := slices.Index(m.roots, n)
 	if i < 0 {
 		return
 	}
-	var forget func(N)
-	forget = func(c N) {
-		delete(m.byID, c.Item().id)
+	var walk func(N)
+	walk = func(c N) {
+		m.retire(c)
 		for _, gc := range c.Item().Children {
-			forget(gc)
+			walk(gc)
 		}
 	}
-	forget(n)
-	m.roots = append(m.roots[:i], m.roots[i+1:]...)
+	walk(n)
+	// A fresh slice: deleting in place (append or slices.Delete alike) shifted
+	// the elements of a slice a caller got from Roots() before the call.
+	m.roots = slices.Delete(slices.Clone(m.roots), i, i+1)
 	m.Rebuild()
 }
 

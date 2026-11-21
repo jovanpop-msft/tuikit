@@ -121,13 +121,22 @@ type Editor struct {
 	// end, and anchor == cursor counts as empty.
 	//
 	// selBlock reinterprets the pair as a rectangular (column) selection: every row
-	// between them at the same [loCol,hiCol) range (see blockColumnBounds). Entered
-	// via Alt+Shift+Arrow or Alt+drag, never in wrapMode, which breaks the fixed rune
-	// columns it assumes.
+	// between them over the same display columns (see blockXBounds; the corners stay
+	// rune indices into their own rows, and blockRuneRange maps the columns onto each
+	// row). Entered via Alt+Shift+Arrow or Alt+drag, never in wrapMode, which breaks
+	// the fixed screen columns it assumes.
 	selecting    bool
 	selBlock     bool
 	selAnchorRow int
 	selAnchorCol int
+
+	// blockCaret is the display column of the zero-width block every block edit
+	// leaves behind (setBlockCaret), valid only while the block, its corners and
+	// the document are exactly as that edit left them. Deriving the column from
+	// the corners instead fails when a wide glyph straddles it on one corner row:
+	// that corner snaps to the glyph's start, the other doesn't, and the caret
+	// becomes a one-column selection the next keystroke deletes on every row.
+	blockCaret blockCaretState
 
 	// clicks pairs fresh Button1 presses on one {row, col} text position into the
 	// double-click that selects a word.

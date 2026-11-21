@@ -17,14 +17,14 @@ func TestLogFeedRecordIsNewestFirstAndCapped(t *testing.T) {
 	if f.Len() != 3 {
 		t.Fatalf("Len = %d, want 3", f.Len())
 	}
-	text, ok := f.TakePending()
+	text, _, ok := f.TakePending()
 	if !ok || text != "line4\nline3\nline2" {
 		t.Fatalf("TakePending = %q, %v; want the capped newest three", text, ok)
 	}
 	if f.Dirty() {
 		t.Fatal("still dirty after TakePending")
 	}
-	if _, ok := f.TakePending(); ok {
+	if _, _, ok := f.TakePending(); ok {
 		t.Fatal("TakePending reported lines a second time")
 	}
 }
@@ -99,5 +99,58 @@ func TestLogFeedReset(t *testing.T) {
 	f.Reset()
 	if f.Len() != 0 || f.Dirty() {
 		t.Fatalf("after Reset: Len %d, Dirty %v; want empty", f.Len(), f.Dirty())
+	}
+}
+
+// The cap counts records, and the editor's trim must follow it: trimmed to Max
+// document lines, one multi-line record pushed the older records out of an
+// open view (and Rebuild brought them back), so Sync and Rebuild disagreed.
+func TestLogFeedSyncMatchesRebuildWithMultiLineRecords(t *testing.T) {
+	cases := []struct {
+		name    string
+		max     int
+		records []string
+	}{
+		{"multi-line newest", 3, []string{"one", "two", "err A\nerr B\nerr C", "four", "five"}},
+		{"one record longer than the rest", 2, []string{"a", "1\n2\n3\n4\n5\n6", "b", "c"}},
+		{"CRLF and lone CR", 3, []string{"x", "p\r\nq", "r\rs", "y", "t\r\nu\r\nv"}},
+		{"record ending in CR", 2, []string{"old", "err\r", "new", "x\r\r"}},
+		{"uncapped", 0, []string{"one", "a\nb", "two", "c\nd\ne"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := NewLogFeed(tc.max)
+			synced, rebuilt := NewEditor(nil), NewEditor(nil)
+			for i, r := range tc.records {
+				f.Record(r)
+				f.Sync(synced)
+				g := NewLogFeed(tc.max)
+				for _, r := range tc.records[:i+1] {
+					g.Record(r)
+				}
+				g.Rebuild(rebuilt)
+				if synced.Text() != rebuilt.Text() {
+					t.Fatalf("after record %d: Sync = %q, Rebuild = %q", i, synced.Text(), rebuilt.Text())
+				}
+			}
+		})
+	}
+}
+
+func TestLogFeedTakePendingKeepLines(t *testing.T) {
+	f := NewLogFeed(2)
+	f.Record("a\nb")
+	f.Record("c")
+	f.Record("d\r\ne\nf")
+	if text, keep, ok := f.TakePending(); !ok || keep != 4 || text != "d\ne\nf\nc" {
+		t.Fatalf("TakePending = %q, %d, %v; want the two newest records and 4 lines", text, keep, ok)
+	}
+	g := NewLogFeed(0)
+	g.Record("a\nb")
+	if _, keep, _ := g.TakePending(); keep != 0 {
+		t.Fatalf("uncapped keepLines = %d, want 0 (keep everything)", keep)
+	}
+	if g.rows != nil {
+		t.Fatalf("uncapped feed keeps line counts %v it never reads", g.rows)
 	}
 }

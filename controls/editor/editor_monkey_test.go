@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v3"
+	"github.com/radix29/tuikit/core"
 	"github.com/radix29/tuikit/tuikittest"
 )
 
@@ -314,6 +315,39 @@ func (m *editorMonkey) check() error {
 		// row's end (a ragged edge); only a linear anchor must be in its row.
 		if l := len(e.doc.Line(e.selAnchorRow)); !e.selBlock && (e.selAnchorCol < 0 || e.selAnchorCol > l) {
 			return fmt.Errorf("selection anchor col %d outside [0,%d] on row %d", e.selAnchorCol, l, e.selAnchorRow)
+		}
+	}
+	if e.HasBlockSelection() {
+		if err := checkBlockRectangular(e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkBlockRectangular reports a block selection whose rows don't cover the
+// same display columns: each row's span must reach the block's edges (clamped to
+// the row's width) and pass them by at most a wide glyph straddling one. A
+// zero-width block must be empty on every row.
+func checkBlockRectangular(e *Editor) error {
+	loX, hiX := e.blockXBounds()
+	top, bot := e.blockRows()
+	for row := top; row <= bot; row++ {
+		lo, hi, ok := e.selectionRangeForLine(row)
+		if !ok {
+			return fmt.Errorf("block row %d not in the selection", row)
+		}
+		line := e.doc.Line(row)
+		w := core.RunesWidth(line)
+		sx, ex := core.ColumnOfRune(line, lo), core.ColumnOfRune(line, hi)
+		if hiX == loX { // a zero-width caret: empty on every row, at its column or a straddling glyph's start
+			if lo != hi || sx > min(loX, w) || sx < min(loX, w)-1 {
+				return fmt.Errorf("zero-width block row %d %q covers columns [%d,%d), caret is at %d", row, string(line), sx, ex, loX)
+			}
+			continue
+		}
+		if sx > min(loX, w) || ex < min(hiX, w) || sx < min(loX, w)-1 || ex > max(hiX+1, sx) {
+			return fmt.Errorf("block row %d %q covers columns [%d,%d), block is [%d,%d)", row, string(line), sx, ex, loX, hiX)
 		}
 	}
 	return nil

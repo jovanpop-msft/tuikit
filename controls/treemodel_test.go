@@ -242,6 +242,85 @@ func TestTreeModelRemoveRoot(t *testing.T) {
 	}
 }
 
+// TestTreeModelRemoveRootRetiresSubtree: a removed root's nodes are retired
+// (OnRetire) and released (OnRelease), and a load in flight under it that
+// lands afterwards is refused rather than registered under an unreachable
+// parent.
+func TestTreeModelRemoveRootRetiresSubtree(t *testing.T) {
+	tr := newTMTree()
+	r, kids := tr.root()
+	tr.m.Expand(kids[0]) // its load is now in flight
+	if tr.m.Len() != 4 {
+		t.Fatalf("Len before remove = %d, want 4", tr.m.Len())
+	}
+	tr.m.RemoveRoot(r)
+	all := []*tmNode{r, kids[0], kids[1], kids[2]}
+	for _, n := range all {
+		if !n.Retired() {
+			t.Errorf("%s not retired", n.name)
+		}
+		if !slices.Contains(tr.retired, n) {
+			t.Errorf("OnRetire missed %s", n.name)
+		}
+		if !slices.Contains(tr.released, n) {
+			t.Errorf("OnRelease missed %s", n.name)
+		}
+	}
+	if tr.m.Len() != 0 {
+		t.Errorf("Len after remove = %d, want 0", tr.m.Len())
+	}
+	if tr.m.SetChildren(kids[0], tmNodes("x", "y")) {
+		t.Error("late SetChildren under the removed root was accepted")
+	}
+	tr.m.Rebuild()
+	if tr.m.Len() != 0 {
+		t.Errorf("Len after the late delivery = %d, want 0", tr.m.Len())
+	}
+	if len(tr.labels()) != 0 {
+		t.Errorf("rows = %q, want none", tr.labels())
+	}
+}
+
+// TestTreeModelRemoveRootKeepsOthers: removing a root that isn't the last
+// leaves the others in order and doesn't shift a Roots() slice taken before
+// the call.
+func TestTreeModelRemoveRootKeepsOthers(t *testing.T) {
+	tr := newTMTree()
+	rs := tmNodes("r1", "r2", "r3")
+	for _, r := range rs {
+		tr.m.AddRoot(r)
+	}
+	held := tr.m.Roots()
+	tr.m.RemoveRoot(rs[0])
+	if got := tr.m.Roots(); !slices.Equal(got, rs[1:]) {
+		t.Errorf("roots = %v, want r2 r3", got)
+	}
+	if !slices.Equal(held, rs) {
+		t.Errorf("held Roots() slice changed to %v", held)
+	}
+	if got, want := tr.labels(), []string{"r2", "r3"}; !slices.Equal(got, want) {
+		t.Errorf("rows = %q, want %q", got, want)
+	}
+	if rs[1].Retired() || rs[2].Retired() {
+		t.Error("a surviving root was retired")
+	}
+}
+
+// TestTreeModelRemoveSelectedRootClamps: a selection inside the removed root
+// goes to the row the TreeView's clamp leaves selected, reported as a
+// reselect.
+func TestTreeModelRemoveSelectedRootClamps(t *testing.T) {
+	tr := newTMTree()
+	r, kids := tr.root()
+	s := &tmNode{name: "srv2"}
+	tr.m.AddRoot(s)
+	tr.m.Select(kids[1])
+	tr.m.RemoveRoot(r)
+	if got := tr.selected(t); got != s {
+		t.Errorf("selection = %q, want srv2", got.name)
+	}
+}
+
 // TestTreeModelRetireKeepsChildren: Retire takes one node out and leaves the
 // nodes below it, which the host re-parented, live.
 func TestTreeModelRetireKeepsChildren(t *testing.T) {

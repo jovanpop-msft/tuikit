@@ -18,8 +18,9 @@ type LogDialogSpec struct {
 	Title string
 	W, H  int
 
-	// Max is the number of lines kept; the oldest are dropped first. Zero or
-	// less keeps everything.
+	// Max is the number of lines (Record calls) kept; the oldest are dropped
+	// first. A line holding newlines is still one. Zero or less keeps
+	// everything.
 	Max int
 
 	// Empty is drawn on the first row while the log holds no lines.
@@ -131,7 +132,7 @@ func (d *LogDialog) Editor() *editor.Editor { return d.editor }
 
 // Sync prepends the lines recorded since the last sync to the editor, keeping
 // its cursor, selection and scroll on the text they were on (see feed), and
-// trims it to Max. Draw calls it; call it directly only to bring the editor up
+// trims it to the lines the retained records take. Draw calls it; call it directly only to bring the editor up
 // to date without drawing. UI goroutine only.
 //
 // LogFeed.Sync is not used: it would hold mu across the editor update, the
@@ -139,10 +140,10 @@ func (d *LogDialog) Editor() *editor.Editor { return d.editor }
 // goroutine. The pending lines are taken under the lock and applied outside.
 func (d *LogDialog) Sync() {
 	d.mu.Lock()
-	text, ok := d.feed.TakePending()
+	text, keep, ok := d.feed.TakePending()
 	d.mu.Unlock()
 	if ok {
-		d.editor.PrependLines(text, d.feed.Max())
+		d.editor.PrependLines(text, keep)
 	}
 }
 

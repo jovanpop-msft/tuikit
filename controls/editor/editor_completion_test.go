@@ -803,3 +803,81 @@ func TestEditorCompletionRequestCarriesTextRevision(t *testing.T) {
 		t.Errorf("Version = %d after a bare cursor move, want %d (text unchanged)", v, before)
 	}
 }
+
+// fixedCompletionProvider offers items verbatim, replacing from the start of the
+// word before the cursor: a snippet-style provider whose Text need not match
+// what was typed.
+func fixedCompletionProvider(items ...CompletionItem) CompletionProvider {
+	return func(req CompletionRequest) ([]CompletionItem, int) {
+		line := req.Lines[req.Row]
+		return items, DefaultWordStart(line, core.Clamp(req.Col, 0, len(line)))
+	}
+}
+
+// A completion Text holding a newline is split into document lines, as a paste
+// is: spliced raw, it became one line with an embedded "\n" that row numbering,
+// the highlighter and drawing disagreed with.
+func TestEditorCompletionCommitSplitsNewlines(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		do   func(*Editor)
+	}{
+		{"single candidate (Ctrl+Space)", func(e *Editor) {
+			e.HandleKey(tuikittest.Rune(' ', tcell.ModCtrl))
+		}},
+		{"selected in the popup (Enter)", func(e *Editor) {
+			typeString(e, "e")
+			if !e.OverlayActive() {
+				t.Fatal("setup: popup not open after typing")
+			}
+			e.HandleKey(tuikittest.Key(tcell.KeyEnter, tcell.ModNone))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const start = "SELECT * FROM we AND"
+			e := newTestEditor(start)
+			e.SetCompletionProvider(fixedCompletionProvider(CompletionItem{Text: "[weird\r\nname]", Label: "weird"}))
+			e.cursorRow, e.cursorCol = 0, len("SELECT * FROM we")
+			tc.do(e)
+			if e.doc.Len() != 2 {
+				t.Fatalf("doc.Len() = %d, want 2; Text() = %q", e.doc.Len(), e.Text())
+			}
+			const want = "SELECT * FROM [weird\nname] AND"
+			if got := e.Text(); got != want {
+				t.Fatalf("Text() = %q, want %q", got, want)
+			}
+			for i := range e.doc.Len() {
+				if strings.ContainsAny(string(e.doc.Line(i)), "\r\n") {
+					t.Fatalf("line %d = %q holds a line break", i, string(e.doc.Line(i)))
+				}
+			}
+			if e.cursorRow != 1 || e.cursorCol != len("name]") {
+				t.Fatalf("cursor = (%d,%d), want (1,%d)", e.cursorRow, e.cursorCol, len("name]"))
+			}
+			e.HandleKey(tuikittest.Key(tcell.KeyCtrlZ, tcell.ModNone))
+			if tc.name == "single candidate (Ctrl+Space)" {
+				if got := e.Text(); got != start {
+					t.Fatalf("one undo left %q, want %q", got, start)
+				}
+			} else if got := e.Text(); got != "SELECT * FROM wee AND" {
+				t.Fatalf("one undo left %q, want the typed text back", got)
+			}
+		})
+	}
+}
+
+// A tab in a completion Text expands to IndentWidth spaces, as a pasted or
+// typed one does.
+func TestEditorCompletionCommitExpandsTabs(t *testing.T) {
+	e := newTestEditor("x ab")
+	e.SetIndentWidth(4)
+	e.SetCompletionProvider(fixedCompletionProvider(CompletionItem{Text: "a\tb", Label: "a b"}))
+	e.cursorRow, e.cursorCol = 0, 4
+	e.HandleKey(tuikittest.Rune(' ', tcell.ModCtrl))
+	if got := e.Text(); got != "x a    b" {
+		t.Fatalf("Text() = %q, want %q", got, "x a    b")
+	}
+	if e.cursorCol != len("x a    b") {
+		t.Fatalf("cursorCol = %d, want %d", e.cursorCol, len("x a    b"))
+	}
+}

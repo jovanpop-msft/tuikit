@@ -249,6 +249,9 @@ func TestParseClock(t *testing.T) {
 		"123456:59:59":     123456*time.Hour + 59*time.Minute + 59*time.Second,
 		"99999 days":       99999 * 24 * time.Hour,
 		"00:00:00.1234567": 123456700,
+		// The largest interval that fits time.Duration, and its negation.
+		"99999 days 162070:59:59.999999999":  maxClockDuration,
+		"-99999 days 162070:59:59.999999999": -maxClockDuration,
 	}
 	for in, want := range ok {
 		if got, isClock := ParseClock(in); !isClock || got != want {
@@ -260,12 +263,18 @@ func TestParseClock(t *testing.T) {
 		"00:00:00.1234567890", "a:00:00", "1 week 00:00:00", "day 00:00:00",
 		"2026-11-20 14:03:22", "16.0.4135.4", "1,234", "12 MB", "1 mon 2 days",
 		" 00:00:01", "00:00:01 ", "+00:00:01", "1234567:00:00", "100000 days", "00:00:00:00",
+		// An hour past the largest: it would wrap time.Duration negative.
+		"99999 days 162071:00:00", "-99999 days 162071:00:00", "99999 days 999999:00:00",
 	} {
 		if d, isClock := ParseClock(in); isClock {
 			t.Errorf("ParseClock(%q) = %v, want not a duration", in, d)
 		}
 	}
 }
+
+// maxClockDuration is the largest interval ParseClock accepts:
+// maxClockHours, then 59:59.999999999.
+const maxClockDuration = time.Duration(maxClockHours)*time.Hour + time.Hour - 1
 
 // ParseClock is FormatClock's inverse, so the pair can't drift apart: every
 // whole-second duration FormatClock writes reads back exactly.

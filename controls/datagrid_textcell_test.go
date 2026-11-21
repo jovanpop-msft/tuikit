@@ -65,6 +65,8 @@ func TestClassifyTextCell(t *testing.T) {
 		// Clock-style durations are numbers (core.ParseClock).
 		"14:00:01": CellNumber, "100:00:00": CellNumber, "2 days 03:04:05": CellNumber,
 		"00:00:01.5": CellNumber, "1 day": CellNumber,
+		// Past time.Duration's range it is text, never a wrapped negative number.
+		"99999 days 999999:00:00": CellText,
 	} {
 		if got := ClassifyTextCell(cell); got != want {
 			t.Errorf("ClassifyTextCell(%q) = %v, want %v", cell, got, want)

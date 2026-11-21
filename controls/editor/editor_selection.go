@@ -64,15 +64,44 @@ func (e *Editor) selectionBounds() (startRow, startCol, endRow, endCol int) {
 	return cr, cc, ar, ac
 }
 
-// blockColumnBounds returns the [loCol, hiCol) column range shared by every row
-// of a block (column) selection, ordered lo <= hi. Unlike selectionBounds's
-// document-order pairing, a block's row and column orders are independent:
-// anchor (5,3), cursor (2,10) spans rows 2-5 at columns 3-10, not "backwards".
-func (e *Editor) blockColumnBounds() (loCol, hiCol int) {
-	if e.selAnchorCol <= e.cursorCol {
-		return e.selAnchorCol, e.cursorCol
+// blockXBounds returns the [loX, hiX) display-column range shared by every row
+// of a block (column) selection, ordered lo <= hi. The corners are rune indices
+// into their own rows, so each is converted on its own row: a block is a
+// rectangle on screen, and slicing every row at the corners' rune indices drifts
+// as soon as a row holds a wide (CJK, emoji) or zero-width (combining) rune.
+// Unlike selectionBounds's document-order pairing, a block's row and column
+// orders are independent: anchor (5,3), cursor (2,10) spans rows 2-5 at columns
+// 3-10, not "backwards".
+//
+// A zero-width block left by a block edit is its stored column (blockCaret),
+// never the corners' columns, which can disagree by a straddling wide glyph.
+func (e *Editor) blockXBounds() (loX, hiX int) {
+	if x, ok := e.blockCaretX(); ok {
+		return x, x
 	}
-	return e.cursorCol, e.selAnchorCol
+	a := core.ColumnOfRune(e.doc.Line(e.selAnchorRow), e.selAnchorCol)
+	c := core.ColumnOfRune(e.doc.Line(e.cursorRow), e.cursorCol)
+	return min(a, c), max(a, c)
+}
+
+// blockRuneRange maps the display range [loX, hiX) onto row's rune indices,
+// cluster by cluster, clamped to the line. A wide cluster straddling either edge
+// counts as inside, so a glyph is never half selected (the draw code's "never
+// half a glyph" rule); a row shorter than loX yields lo == hi == len(line). An
+// empty range (hiX <= loX) yields lo == hi.
+func (e *Editor) blockRuneRange(row, loX, hiX int) (lo, hi int) {
+	line := e.doc.Line(row)
+	n := len(line)
+	lo, _ = core.ClusterAtColumn(line, loX)
+	lo = min(lo, n)
+	if hiX <= loX {
+		return lo, lo
+	}
+	hi, start := core.ClusterAtColumn(line, hiX)
+	if hi < n && start < hiX {
+		hi = core.NextGrapheme(line, hi)
+	}
+	return lo, min(hi, n)
 }
 
 // selectionRangeForLine returns the selected [startCol, endCol) column range for
@@ -82,9 +111,9 @@ func (e *Editor) blockColumnBounds() (loCol, hiCol int) {
 // selection, endCol is len(line)+1, the extra column representing the line break
 // so the highlight reads as continuous.
 //
-// Block (column) selection: every affected row uses the same blockColumnBounds()
-// range, clamped to the row's length; a row shorter than loCol yields an empty
-// (start==end) range with no special case.
+// Block (column) selection: every affected row covers the same display columns
+// (blockXBounds), mapped onto its own runes by blockRuneRange; a row shorter than
+// the block's left edge yields an empty (start==end) range with no special case.
 func (e *Editor) selectionRangeForLine(lineIdx int) (startCol, endCol int, ok bool) {
 	if !e.HasSelection() {
 		return 0, 0, false
@@ -94,9 +123,9 @@ func (e *Editor) selectionRangeForLine(lineIdx int) (startCol, endCol int, ok bo
 		if lineIdx < topRow || lineIdx > botRow {
 			return 0, 0, false
 		}
-		loCol, hiCol := e.blockColumnBounds()
-		n := len(e.doc.Line(lineIdx))
-		return core.Clamp(loCol, 0, n), core.Clamp(hiCol, 0, n), true
+		loX, hiX := e.blockXBounds()
+		lo, hi := e.blockRuneRange(lineIdx, loX, hiX)
+		return lo, hi, true
 	}
 	sr, sc, er, ec := e.selectionBounds()
 	if lineIdx < sr || lineIdx > er {
@@ -114,7 +143,7 @@ func (e *Editor) selectionRangeForLine(lineIdx int) (startCol, endCol int, ok bo
 }
 
 // SelectedText returns the selected text, or "" if none. For a block (column)
-// selection each affected row's [loCol,hiCol) slice is joined with "\n", as for a
+// selection each affected row's slice (blockRuneRange) is joined with "\n", as for a
 // linear multi-line selection. It also records a block selection's text in
 // blockClip so a later Paste of the same text can put it back rectangularly;
 // every copy path (Edit > Copy, Ctrl+C, the context menu) passes through here.
@@ -124,8 +153,8 @@ func (e *Editor) SelectedText() string {
 	}
 	if e.selBlock {
 		topRow, botRow := min(e.selAnchorRow, e.cursorRow), max(e.selAnchorRow, e.cursorRow)
-		loCol, hiCol := e.blockColumnBounds()
-		if hiCol == loCol {
+		loX, hiX := e.blockXBounds()
+		if hiX == loX {
 			// A zero-width block is the caret left behind by typing in column mode, not a
 			// selection: it must not copy as a run of newlines.
 			e.blockClip = ""
@@ -136,10 +165,8 @@ func (e *Editor) SelectedText() string {
 			if r > topRow {
 				sb.WriteByte('\n')
 			}
-			line := e.doc.Line(r)
-			lo := core.Clamp(loCol, 0, len(line))
-			hi := core.Clamp(hiCol, 0, len(line))
-			sb.WriteString(string(line[lo:hi]))
+			lo, hi := e.blockRuneRange(r, loX, hiX)
+			sb.WriteString(string(e.doc.Line(r)[lo:hi]))
 		}
 		e.blockClip = sb.String()
 		return e.blockClip
@@ -182,14 +209,17 @@ func (e *Editor) deleteSelection() {
 	}
 	if e.selBlock {
 		topRow, botRow := min(e.selAnchorRow, e.cursorRow), max(e.selAnchorRow, e.cursorRow)
-		loCol, hiCol := e.blockColumnBounds()
+		loX, hiX := e.blockXBounds()
+		topLo := 0
 		for r := topRow; r <= botRow; r++ {
+			lo, hi := e.blockRuneRange(r, loX, hiX)
+			if r == topRow {
+				topLo = lo
+			}
 			line := e.doc.Line(r)
-			lo := core.Clamp(loCol, 0, len(line))
-			hi := core.Clamp(hiCol, 0, len(line))
 			e.doc.setLine(r, append(line[:lo], line[hi:]...))
 		}
-		e.cursorRow, e.cursorCol = topRow, loCol
+		e.cursorRow, e.cursorCol = topRow, topLo
 		e.selecting = false
 		e.selBlock = false
 		return

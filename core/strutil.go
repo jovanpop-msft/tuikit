@@ -457,8 +457,10 @@ func FormatClock(d time.Duration) string {
 // FormatClock ("01:02:03", "100:00:00"), and also the forms a database prints
 // for an interval: a fraction of a second ("00:00:01.25"), a day count in
 // front ("2 days 03:04:05", or "1 day" alone) and a leading minus
-// ("-00:00:05"). At most 99999 days and 999999 hours, which together stay
-// inside time.Duration's ~292 years. Minutes and seconds are exactly two digits below 60, so
+// ("-00:00:05"). At most 99999 days and 999999 hours, and the two together
+// at most maxClockHours (2562046 h, just under time.Duration's ~292 years): a
+// longer interval would wrap negative and sort before every real one, so it
+// reads as text instead. Minutes and seconds are exactly two digits below 60, so
 // "1:5:00" and "12:60:00" are not durations, and neither is a two-part
 // "10:30" (minutes:seconds or hours:minutes — it can't tell). A time of day
 // ("14:00:01") reads as the duration since midnight, which sorts the same.
@@ -491,6 +493,9 @@ func ParseClock(s string) (time.Duration, bool) {
 	if !okH || !okM || !okS || len(parts[1]) != 2 || len(secs) != 2 || m >= 60 || sec >= 60 {
 		return 0, false
 	}
+	if int64(d/time.Hour)+h > maxClockHours {
+		return 0, false
+	}
 	d += time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(sec)*time.Second
 	if hasFrac {
 		ns, ok := parseDigits(frac, 9)
@@ -504,6 +509,11 @@ func ParseClock(s string) (time.Duration, bool) {
 	}
 	return signed(d, neg), true
 }
+
+// maxClockHours is the most whole hours ParseClock accepts: one less than
+// time.Duration holds, since minutes, seconds and a fraction add up to an hour
+// more on top.
+const maxClockHours = math.MaxInt64/int64(time.Hour) - 1
 
 // parseDigits reads s as 1 to maxLen ASCII digits.
 func parseDigits(s string, maxLen int) (int64, bool) {
