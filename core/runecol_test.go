@@ -301,7 +301,7 @@ func TestGraphemeAtPastEnd(t *testing.T) {
 // TestGraphemeAtWalkProperty: a walk from 0 reaches len(line) and its widths
 // sum to RunesWidth, over random lines mixing ASCII, combining marks and wide runes.
 func TestGraphemeAtWalkProperty(t *testing.T) {
-	pool := []rune("ab c\t~́̀‍中文\U0001F600é가กำ")
+	pool := []rune("ab c\t~́̀\u200d中文\U0001F600é가กำ")
 	seed := uint64(1)
 	next := func() int {
 		seed = seed*6364136223846793005 + 1442695040888963407

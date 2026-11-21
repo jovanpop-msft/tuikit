@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-var propAtoms = []string{"a", "b", "Z", " ", "\t", "\n", "\r", "\r\n", "世", "é", "́", "️", "‍", "​", "😀", "é", "0"}
+var propAtoms = []string{"a", "b", "Z", " ", "\t", "\n", "\r", "\r\n", "世", "é", "́", "️", "\u200d", "\u200b", "😀", "é", "0"}
 
 func propString(r *rand.Rand) string {
 	var sb strings.Builder
@@ -45,7 +45,7 @@ func TestLeadingZeroWidthRepros(t *testing.T) {
 	if g := PadLeft("️b", 7); DisplayWidth(g) != 7 {
 		t.Errorf("PadLeft: %q is %d", g, DisplayWidth(g))
 	}
-	if g := TruncateLine("\r\n️​a", 2); DisplayWidth(g) > 2 {
+	if g := TruncateLine("\r\n️\u200ba", 2); DisplayWidth(g) > 2 {
 		t.Errorf("TruncateLine: %q is %d", g, DisplayWidth(g))
 	}
 	for _, l := range WrapText(" ́\r  ️\nb", 3) {
