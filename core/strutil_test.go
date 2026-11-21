@@ -167,6 +167,9 @@ func TestParseFormattedNumber(t *testing.T) {
 		"1,,2": false, ",5": false, "-,5": false, "1,5": false, "12,34": false,
 		"1,234.5,6": false, "-1,234,567.5": true, "+3": true,
 		"-.5": true, ".5": true,
+		"1e5": false, "12e4": false, "1E3": false, "5e-2 ms": false,
+		"007": false, "-007": false, "00": false, "0": true, "-0.5": true,
+		"4.0 KB": true, "250 ms": true, "0.05": true,
 	} {
 		if _, ok := ParseFormattedNumber(in); ok != want {
 			t.Errorf("ParseFormattedNumber(%q) ok = %v, want %v", in, ok, want)

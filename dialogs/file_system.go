@@ -110,7 +110,16 @@ func (LocalFileSystem) List(dir string) ([]FileEntry, error) {
 	entries := make([]FileEntry, 0, len(infos))
 	for _, e := range infos {
 		fe := FileEntry{Name: e.Name(), IsDir: e.IsDir()}
-		if info, err := e.Info(); err == nil {
+		info, err := e.Info()
+		if e.Type()&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
+			// DirEntry describes the link, not its target; irregular covers
+			// Windows junctions. A dangling link fails Stat and stays a file.
+			if ti, terr := os.Stat(filepath.Join(dir, e.Name())); terr == nil {
+				info, err = ti, nil
+				fe.IsDir = ti.IsDir()
+			}
+		}
+		if err == nil {
 			fe.Size = info.Size()
 			fe.ModTime = info.ModTime()
 		}

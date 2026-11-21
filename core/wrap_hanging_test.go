@@ -1,9 +1,11 @@
 package core
 
 import (
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A wrapped entry continues under its second column, not under the key or at
@@ -105,5 +107,46 @@ func TestWrapHangingKeepsGraphemeClusters(t *testing.T) {
 	rows, _ := WrapHanging([]string{"xy 👨\u200d👩\u200d👧"}, 5)
 	if len(rows) != 1 {
 		t.Errorf("a 5-column line wrapped at w=5: %q", rows)
+	}
+}
+
+// A wide grapheme behind a hang once looped forever (no progress per pass).
+func TestWrapHangingWideGraphemeTerminates(t *testing.T) {
+	rows, src := WrapHanging([]string{" aéxy😀é😀"}, 2)
+	if len(rows) != len(src) || len(rows) == 0 || len(rows) > 20 {
+		t.Fatalf("rows = %q", rows)
+	}
+}
+
+func TestWrapHangingFuzzTerminatesAndKeepsText(t *testing.T) {
+	alphabet := []string{" ", " ", "a", "b", "é", "x", "世", "😀", "  "}
+	rng := rand.New(rand.NewPCG(1, 2))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for n := 0; n < 20000; n++ {
+			var sb strings.Builder
+			for i, l := 0, rng.IntN(12); i < l; i++ {
+				sb.WriteString(alphabet[rng.IntN(len(alphabet))])
+			}
+			in, w := sb.String(), 1+rng.IntN(6)
+			rows, _ := WrapHanging([]string{in}, w)
+			for _, r := range rows {
+				if DisplayWidth(r) > w && len([]rune(strings.TrimSpace(r))) > 1 {
+					t.Errorf("w=%d in=%q row %q too wide", w, in, r)
+					return
+				}
+			}
+			strip := func(s string) string { return strings.ReplaceAll(s, " ", "") }
+			if got := strip(strings.Join(rows, "")); got != strip(in) {
+				t.Errorf("w=%d in=%q text changed: %q", w, in, rows)
+				return
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("WrapHanging did not terminate")
 	}
 }

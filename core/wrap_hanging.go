@@ -34,7 +34,14 @@ func WrapHanging(lines []string, w int) (rows []string, src []int) {
 		for DisplayWidth(line) > w {
 			first, rest := splitHanging(line, w, hang)
 			rows, src = append(rows, first), append(src, i)
-			line = strings.Repeat(" ", hang) + rest
+			next := strings.Repeat(" ", hang) + rest
+			if DisplayWidth(next) >= DisplayWidth(line) {
+				// A grapheme wider than w-hang makes no progress behind the
+				// hang: drop the hanging indent rather than loop forever.
+				hang = 0
+				next = rest
+			}
+			line = next
 		}
 		rows, src = append(rows, line), append(src, i)
 	}

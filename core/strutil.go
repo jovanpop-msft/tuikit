@@ -608,6 +608,14 @@ func ParseFormattedNumber(s string) (float64, bool) {
 		strings.ContainsAny(s, "xXpP_") {
 		return 0, false
 	}
+	// Neither formatter writes an exponent, so "12e4" and "1E3" are codes, not
+	// numbers; and "007" is an id: a leading zero is only the lone "0" or "0.x".
+	if strings.ContainsAny(body, "eE") {
+		return 0, false
+	}
+	if len(body) > 1 && body[0] == '0' && body[1] != '.' && body[1] != ',' {
+		return 0, false
+	}
 	if strings.Contains(body, ",") {
 		// Grouping is only what FormatThousands writes: 1-3 digits, then
 		// ",ddd" groups, in the integer part. "1,2,3", "1,,2", "1,5" are text.

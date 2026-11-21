@@ -76,3 +76,63 @@ func TestLocalFileSystemDriveList(t *testing.T) {
 		}
 	}
 }
+
+// symlinkFixture holds real/, link -> real, dangling -> missing and
+// flink -> file.txt; it skips when the platform refuses symlinks.
+func symlinkFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "real"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{"zlink": "real", "dangling": "missing", "flink": "file.txt"} {
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+	return dir
+}
+
+func TestLocalFileSystemListSymlinkToDirIsDir(t *testing.T) {
+	dir := symlinkFixture(t)
+	entries, err := LocalFileSystem{}.List(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]FileEntry{}
+	for _, e := range entries {
+		got[e.Name] = e
+	}
+	if !got["zlink"].IsDir {
+		t.Error("link to a directory listed as a file")
+	}
+	if got["dangling"].IsDir || got["flink"].IsDir {
+		t.Error("dangling link or link to a file listed as a directory")
+	}
+	if got["flink"].Size != 1 {
+		t.Errorf("flink size = %d, want the target's 1", got["flink"].Size)
+	}
+}
+
+func TestFileDialogSymlinkedDirBehavesAsDir(t *testing.T) {
+	dir := symlinkFixture(t)
+	d := NewFileDialog()
+	d.loadDir(dir)
+	// "..", real, zlink, then files: the link sorts among the dirs.
+	if d.entries[1].Name != "real" || d.entries[2].Name != "zlink" || !d.entries[2].IsDir {
+		t.Fatalf("entries = %v, want zlink sorted among the dirs", d.entries)
+	}
+	d.nameField.SetValue("")
+	d.pathField.SetValue("z")
+	if !d.completeField(d.pathField, true) {
+		t.Error("dirsOnly completion does not offer the linked directory")
+	}
+	d.sel = 2
+	d.activateSelected()
+	if d.dir != filepath.Join(dir, "zlink") {
+		t.Errorf("dir = %q, want navigation into the link", d.dir)
+	}
+}
