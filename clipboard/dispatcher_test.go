@@ -339,3 +339,75 @@ func TestPasteAfterSupersededCopy(t *testing.T) {
 		t.Errorf("pastes = %q, want [B]", tgt.pastes)
 	}
 }
+
+// A Copy whose write never returns (a Win32 EmptyClipboard blocked on a hung
+// clipboard owner) used to park every later Paste forever: the read waited
+// unbounded for that write, and checked for it under the lock the write held.
+// The Paste now reads after pasteWait, and a Copy queued behind the stuck one
+// still lands once it returns.
+func TestPasteNotHeldByStuckCopy(t *testing.T) {
+	h := newHarness()
+	tgt := &fakeTarget{}
+	h.active = tgt
+	h.d.pasteWait = 50 * time.Millisecond
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	var mu sync.Mutex
+	clip := "old"
+	var writes []string
+	h.d.NativeWrite = func(text string) bool {
+		if text == "stuck" {
+			close(entered)
+			<-release
+		}
+		mu.Lock()
+		clip = text
+		writes = append(writes, text)
+		mu.Unlock()
+		return true
+	}
+	h.d.NativeRead = func() (string, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		return clip, true
+	}
+
+	h.d.Copy("stuck")
+	<-entered
+	start := time.Now()
+	h.d.Paste()
+	h.drain(t)
+	if el := time.Since(start); el > 2*time.Second {
+		t.Errorf("Paste took %v behind a stuck Copy, want about pasteWait", el)
+	}
+	if !slices.Equal(tgt.pastes, []string{"old"}) {
+		t.Fatalf("pastes = %q, want [old] (the clipboard as it stands)", tgt.pastes)
+	}
+
+	h.d.Copy("next")
+	close(release)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		got := slices.Clone(writes)
+		mu.Unlock()
+		if slices.Equal(got, []string{"stuck", "next"}) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("writes = %q, want [stuck next]", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	h.d.Paste()
+	h.drain(t)
+	if !slices.Equal(tgt.pastes, []string{"old", "next"}) {
+		t.Errorf("pastes = %q, want [old next]", tgt.pastes)
+	}
+}
