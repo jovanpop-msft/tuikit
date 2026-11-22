@@ -486,24 +486,17 @@ func panelOverlayActive(p Panel) bool {
 	return ok && o.OverlayActive()
 }
 
-// HandleMouse routes mouse events to the tab bar or active panel.
+// HandleMouse routes mouse events to the tab bar or active panel. The zones are
+// tried in priority order, and an earlier zone's early return is what keeps a
+// later one from seeing the event: the order below is the routing, so a new
+// zone is placed by what it must win over and lose to.
 func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
-	mx, my := ev.Position()
 	wasHeld := pm.button1Held
 
 	// Releases can land outside our bounds (e.g. a splitter drag inside the active
 	// panel), so always forward them to end drags cleanly.
 	if pm.press.Release(ev) {
-		pm.comboSbDragging = false
-		pm.button1Held = false
-		if p := pm.stranded; p != nil {
-			pm.stranded = nil
-			p.HandleMouse(core.ReleaseNowhere(ev))
-		}
-		if p := pm.ActivePanel(); p != nil {
-			return p.HandleMouse(ev)
-		}
-		return false
+		return pm.mouseRelease(ev)
 	}
 	if ev.Buttons() == tcell.Button1 {
 		pm.button1Held = true
@@ -514,28 +507,11 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 	foreign := ev.Buttons() == tcell.Button1 && wasHeld && !pm.press.Held() &&
 		!pm.comboSbDragging
 
-	// The drop-down's scrollbar goes ahead of the bounds check (a latched drag owns
-	// the mouse until release) and of the list hit-test (the bar occupies the
-	// list's last column). Writes nothing and returns false when no bar is needed.
-	if pm.comboOpen {
-		listX, listW, listH := pm.comboGeom()
-		if core.HandleScrollbarDrag(ev, listX+listW-1, pm.contentY(), listH,
-			len(pm.panels), &pm.comboSbDragging, &pm.comboScroll) {
-			return true
-		}
+	if pm.mouseComboScrollbar(ev) {
+		return true
 	}
-
-	// The panel that took the press keeps its drag wherever it goes, so a
-	// selection drag can leave our rect or cross the tab row and still
-	// auto-scroll. A stranded panel owns it instead; the new one never saw it begin.
 	if foreign {
-		if pm.stranded != nil {
-			return true
-		}
-		if p := pm.ActivePanel(); p != nil {
-			return p.HandleMouse(ev)
-		}
-		return false
+		return pm.mouseForeign(ev)
 	}
 
 	// The active panel's overlay gets first refusal wherever the event lands:
@@ -545,90 +521,150 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 		return p.HandleMouse(ev)
 	}
 
+	mx, my := ev.Position()
 	if mx < pm.rect.X || mx >= pm.rect.X+pm.rect.W {
 		// A press outside closes the drop-down and falls through, as one
-		// outside its list does below.
+		// outside its list does in mouseCombo.
 		if pm.comboOpen && ev.Buttons() == tcell.Button1 {
 			pm.setComboOpen(false)
 		}
 		return false
 	}
 
-	// An open drop-down is an overlay and gets first refusal of the wheel, as
-	// HandleKey does for keys; otherwise the wheel scrolls the editor under it.
-	// Button1 outside the list falls through; see the dismiss branch below.
-	if pm.comboOpen {
-		switch ev.Buttons() {
-		case tcell.WheelUp:
-			pm.scrollCombo(-core.WheelRows)
-			return true
-		case tcell.WheelDown:
-			pm.scrollCombo(core.WheelRows)
-			return true
-		}
+	// The tab row goes ahead of the drop-down: a click on the arrow of an open
+	// combo is a toggle, not a click outside the list that closes it first.
+	if pm.mouseTabRow(ev, mx, my) || pm.mouseCombo(ev, mx, my) {
+		return true
 	}
+	return pm.mousePanel(ev, my)
+}
 
+// mouseRelease ends every latch on a release and forwards it: to the stranded
+// panel off-screen, so its press latch resets, and to the active panel
+// wherever it lands.
+func (pm *PanelManager) mouseRelease(ev *tcell.EventMouse) bool {
+	pm.comboSbDragging = false
+	pm.button1Held = false
+	if p := pm.stranded; p != nil {
+		pm.stranded = nil
+		p.HandleMouse(core.ReleaseNowhere(ev))
+	}
+	if p := pm.ActivePanel(); p != nil {
+		return p.HandleMouse(ev)
+	}
+	return false
+}
+
+// mouseComboScrollbar handles the drop-down's scrollbar. It goes ahead of the
+// bounds check (a latched drag owns the mouse until release) and of the list
+// hit-test (the bar occupies the list's last column). Writes nothing and
+// returns false when the combo is closed or no bar is needed.
+func (pm *PanelManager) mouseComboScrollbar(ev *tcell.EventMouse) bool {
+	if !pm.comboOpen {
+		return false
+	}
+	listX, listW, listH := pm.comboGeom()
+	return core.HandleScrollbarDrag(ev, listX+listW-1, pm.contentY(), listH,
+		len(pm.panels), &pm.comboSbDragging, &pm.comboScroll)
+}
+
+// mouseForeign routes a drag whose press a panel took. The panel that took the
+// press keeps its drag wherever it goes, so a selection drag can leave our rect
+// or cross the tab row and still auto-scroll. A stranded panel owns it instead;
+// the new one never saw it begin.
+func (pm *PanelManager) mouseForeign(ev *tcell.EventMouse) bool {
+	if pm.stranded != nil {
+		return true
+	}
+	if p := pm.ActivePanel(); p != nil {
+		return p.HandleMouse(ev)
+	}
+	return false
+}
+
+// mouseTabRow handles Button1 on the combo arrow and the tabs, reporting
+// whether it consumed the event.
+func (pm *PanelManager) mouseTabRow(ev *tcell.EventMouse, mx, my int) bool {
+	if my != pm.rect.Y || ev.Buttons() != tcell.Button1 {
+		return false
+	}
 	// Combo toggle arrow. Draw shows it only when there are panels; with none,
 	// the click falls through as one elsewhere on the empty bar does.
-	if len(pm.panels) > 0 && my == pm.rect.Y && mx >= pm.rect.X+pm.rect.W-4 {
-		if ev.Buttons() == tcell.Button1 {
-			if !pm.press.Fresh(ev) {
-				// Same physical press; don't re-toggle on resent motion.
-				return true
-			}
-			pm.setComboOpen(!pm.comboOpen)
+	if len(pm.panels) > 0 && mx >= pm.rect.X+pm.rect.W-4 {
+		if !pm.press.Fresh(ev) {
+			// Same physical press; don't re-toggle on resent motion.
 			return true
 		}
+		pm.setComboOpen(!pm.comboOpen)
+		return true
 	}
 
 	// Tab row click; segments come from tabStrip, as in Draw.
-	if my == pm.rect.Y && ev.Buttons() == tcell.Button1 {
+	if !pm.press.Fresh(ev) {
+		// Same physical press; don't re-fire OnCloseTab (it may prompt to save).
+		return true
+	}
+	first, segs := pm.tabStrip()
+	for k, seg := range segs {
+		i := first + k
+		closeSeg := seg[1]
+		if closeSeg.W > 0 && mx >= closeSeg.X && mx < closeSeg.X+closeSeg.W {
+			if pm.OnCloseTab != nil {
+				pm.OnCloseTab(i)
+			}
+			pm.setComboOpen(false)
+			return true
+		}
+		labelSeg := seg[0]
+		if mx >= labelSeg.X && mx < labelSeg.X+labelSeg.W {
+			pm.switchTo(i)
+			pm.setComboOpen(false)
+			return true
+		}
+	}
+	return false
+}
+
+// mouseCombo handles the open drop-down's wheel and list, reporting whether it
+// consumed the event. Button1 outside the list closes it and is not consumed.
+func (pm *PanelManager) mouseCombo(ev *tcell.EventMouse, mx, my int) bool {
+	if !pm.comboOpen {
+		return false
+	}
+	// An open drop-down is an overlay and gets first refusal of the wheel, as
+	// HandleKey does for keys; otherwise the wheel scrolls the editor under it.
+	switch ev.Buttons() {
+	case tcell.WheelUp:
+		pm.scrollCombo(-core.WheelRows)
+		return true
+	case tcell.WheelDown:
+		pm.scrollCombo(core.WheelRows)
+		return true
+	case tcell.Button1:
+	default:
+		return false
+	}
+
+	listX, listW, listH := pm.comboGeom()
+	row := my - pm.contentY()
+	if mx >= listX && mx < listX+listW && row >= 0 && row < listH {
 		if !pm.press.Fresh(ev) {
-			// Same physical press; don't re-fire OnCloseTab (it may prompt to save).
 			return true
 		}
-		first, segs := pm.tabStrip()
-		for k, seg := range segs {
-			i := first + k
-			closeSeg := seg[1]
-			if closeSeg.W > 0 && mx >= closeSeg.X && mx < closeSeg.X+closeSeg.W {
-				if pm.OnCloseTab != nil {
-					pm.OnCloseTab(i)
-				}
-				pm.setComboOpen(false)
-				return true
-			}
-			labelSeg := seg[0]
-			if mx >= labelSeg.X && mx < labelSeg.X+labelSeg.W {
-				pm.switchTo(i)
-				pm.setComboOpen(false)
-				return true
-			}
-		}
+		pm.switchTo(row + pm.comboScroll)
+		pm.setComboOpen(false)
+		return true
 	}
+	// Close on a click outside the list, then fall through so the click also does
+	// what it was aimed at (as widgets.DropDown does).
+	pm.setComboOpen(false)
+	return false
+}
 
-	// Combo list click
-	if pm.comboOpen {
-		listX, listW, listH := pm.comboGeom()
-		row := my - pm.contentY()
-		if mx >= listX && mx < listX+listW && row >= 0 && row < listH &&
-			ev.Buttons() == tcell.Button1 {
-			if !pm.press.Fresh(ev) {
-				return true
-			}
-			pm.switchTo(row + pm.comboScroll)
-			pm.setComboOpen(false)
-			return true
-		}
-		// Close on a click outside the list, then fall through so the click also does
-		// what it was aimed at (as widgets.DropDown does).
-		if ev.Buttons() == tcell.Button1 {
-			pm.setComboOpen(false)
-		}
-	}
-
+// mousePanel is the last zone: the active panel's content area.
+func (pm *PanelManager) mousePanel(ev *tcell.EventMouse, my int) bool {
 	// A press claimed above owns the gesture until release, so held-Button1
-	// resends must not reach the panel underneath. The branches above return early
+	// resends must not reach the panel underneath. The zones above return early
 	// only while their latch still matches: selecting from the drop-down closes it,
 	// leaving nothing to match, and the held press would hit the newly active panel.
 	// Likewise a press the previous panel took before the switch (stranded).
