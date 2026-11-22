@@ -73,6 +73,8 @@ type TreeView struct {
 	// titleButton is the action pinned to the right end of the top border (see
 	// SetTitleButton); an empty label draws none.
 	titleButton titleButton
+	// closeButton is the "[x]" in the top-right corner (see SetCloseButton);
+	// a nil action draws none.
 	closeButton titleButton
 
 	// clicks pairs presses on one node into a double-click (the mouse spelling of
@@ -517,8 +519,8 @@ func (tv *TreeView) HandleMouse(ev *tcell.EventMouse) bool {
 	}
 	btn, onBtn := tv.titleButtonRect()
 	tv.titleButton.hover = onBtn && btn.Contains(mx, my)
-	close, onClose := tv.closeButtonRect()
-	tv.closeButton.hover = onClose && close.Contains(mx, my)
+	cb, onClose := tv.closeButtonRect()
+	tv.closeButton.hover = onClose && cb.Contains(mx, my)
 	// Ahead of the bounds test: a thumb drag keeps control once the mouse leaves
 	// the tree, so a fast drag still reaches the end, and a press that acted
 	// (a row, the title button) swallows its resends wherever they land.

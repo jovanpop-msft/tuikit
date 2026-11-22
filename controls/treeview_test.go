@@ -818,9 +818,7 @@ func treeTopRow(t *testing.T, tv *TreeView) (string, []tcell.Style) {
 	return b.String(), styles
 }
 
-// The title button is "[label]" just inside the top-right corner; while on
-// reports true it shows "[onLabel]". The label keeps the panel style in both
-// states (no selection background), the brackets the border's.
+// The close button is "[x]" in the top-right corner, after the title button.
 func TestTreeViewCloseButtonSharesTitleBorder(t *testing.T) {
 	for _, width := range []int{30, 10, 9, 5, 4} {
 		tv := NewTreeView()
@@ -873,6 +871,9 @@ func TestTreeViewCloseButtonDoesNotReplayIntoRows(t *testing.T) {
 	}
 }
 
+// The title button is "[label]" just inside the top-right corner; while on
+// reports true it shows "[onLabel]". The label keeps the panel style in both
+// states (no selection background), the brackets the border's.
 func TestTreeViewTitleButtonDrawsRightAligned(t *testing.T) {
 	tv := newTestTreeView()
 	tv.SetTitle("Object Explorer")
