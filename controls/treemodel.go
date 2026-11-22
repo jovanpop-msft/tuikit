@@ -356,7 +356,9 @@ func (m *TreeModel[N]) DropChildren(n N) {
 }
 
 // dropExcept is DropChildren for SetChildren: the children of n that are not in
-// keep are retired with their subtrees; the kept ones stay live.
+// keep are retired with their subtrees; the kept ones stay live. Past a few
+// dozen nodes keep is hashed: a scan of it per old child is O(old × new), 400M
+// comparisons for a 20k-node folder re-delivered in place.
 func (m *TreeModel[N]) dropExcept(n N, keep []N) {
 	var walk func(N)
 	walk = func(c N) {
@@ -365,8 +367,16 @@ func (m *TreeModel[N]) dropExcept(n N, keep []N) {
 			walk(gc)
 		}
 	}
+	kept := func(c N) bool { return slices.Contains(keep, c) }
+	if len(keep) > 32 {
+		set := make(map[N]struct{}, len(keep))
+		for _, c := range keep {
+			set[c] = struct{}{}
+		}
+		kept = func(c N) bool { _, ok := set[c]; return ok }
+	}
 	for _, c := range n.Item().Children {
-		if !slices.Contains(keep, c) {
+		if !kept(c) {
 			walk(c)
 		}
 	}

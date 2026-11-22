@@ -251,3 +251,50 @@ func TestSortMenuItems(t *testing.T) {
 		t.Errorf("sort calls = %v, want [true]", got)
 	}
 }
+
+// A base run covering every row (Ctrl+A, then Ctrl+clicks unpicking some) is
+// carried across a sort as a run: the unpicked rows stay unpicked at their new
+// indexes, a row the new order adds is not marked, a row it drops is gone, and
+// unpicking the last row leaves no marks.
+func TestSetSourceReorderedKeepsAnAllRowsRun(t *testing.T) {
+	base := SliceRowSource{{"c"}, {"a"}, {"d"}, {"b"}, {"e"}}
+	g := newTestDataGrid()
+	g.SetCellCursor(true)
+	g.SetSource([]string{"N"}, PermutedSource{Src: base, Perm: []int{0, 1, 2, 3}}) // c a d b
+	g.selAnchorRow, g.selRow, g.blockSelecting = 0, 3, true
+	markForReorder(g, 1) // unpick a
+	if got := g.SelectedRows(); !slices.Equal(got, []int{0, 2, 3}) {
+		t.Fatalf("marked before = %v, want [0 2 3] (c d b)", got)
+	}
+	old := []int{0, 1, 2, 3}
+
+	asc := []int{1, 3, 0, 2} // a b c d
+	g.SetSourceReordered([]string{"N"}, PermutedSource{Src: base, Perm: asc}, old, asc)
+	if got := g.SelectedRows(); !slices.Equal(got, []int{1, 2, 3}) {
+		t.Fatalf("marked after sorting = %v, want [1 2 3] (b c d)", got)
+	}
+
+	// e (underlying 4) joins, d (2) leaves: e is not marked.
+	grown := []int{4, 3, 1, 0} // e b a c
+	g.SetSourceReordered([]string{"N"}, PermutedSource{Src: base, Perm: grown}, asc, grown)
+	if got := g.SelectedRows(); !slices.Equal(got, []int{1, 3}) {
+		t.Fatalf("marked after e joined and d left = %v, want [1 3] (b c)", got)
+	}
+
+	// An unsorted (nil) old order: rows past the ones shown are new.
+	g.SetSource([]string{"N"}, base[:2]) // c a
+	g.selAnchorRow, g.selRow, g.blockSelecting = 0, 1, true
+	markForReorder(g, 0)   // unpick c
+	wide := []int{4, 1, 0} // e a c
+	g.SetSourceReordered([]string{"N"}, PermutedSource{Src: base, Perm: wide}, nil, wide)
+	if got := g.SelectedRows(); !slices.Equal(got, []int{1}) {
+		t.Fatalf("marked from an unsorted order = %v, want [1] (a)", got)
+	}
+
+	// Every row unpicked: no marks, the cursor row is the selection again.
+	markForReorder(g, 1) // unpick a
+	g.SetSourceReordered([]string{"N"}, PermutedSource{Src: base, Perm: wide}, wide, wide)
+	if g.marking || g.SelectedRowCount() != 1 {
+		t.Errorf("marking=%v count=%d with every row unpicked, want no marks and the cursor row", g.marking, g.SelectedRowCount())
+	}
+}

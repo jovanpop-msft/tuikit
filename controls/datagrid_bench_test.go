@@ -72,3 +72,46 @@ func BenchmarkSelectedRowsAfterCtrlClick(b *testing.B) {
 		g.SelectedRows()
 	}
 }
+
+// A header-click sort of a large result with Ctrl+click marks runs
+// SetSourceReordered on the UI goroutine, carrying each mark to its row's new
+// index. It used to materialise every marked row and hash the whole new order
+// into a map — two million-entry maps after Ctrl+A.
+func BenchmarkSetSourceReorderedMarked(b *testing.B) {
+	const n = 1_000_000
+	asc, desc := make([]int, n), make([]int, n)
+	for i := range n {
+		asc[i], desc[i] = i, n-1-i
+	}
+	for _, tc := range []struct {
+		name string
+		mark func(g *DataGrid)
+	}{
+		{"10marks", func(g *DataGrid) {
+			for r := range 10 {
+				g.markRow(r * 97_003)
+			}
+		}},
+		{"selectAll", func(g *DataGrid) {
+			g.selAnchorRow, g.selRow, g.blockSelecting = 0, n-1, true
+			g.markRow(500_000)
+		}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			g := newTestDataGrid()
+			g.SetCellCursor(true)
+			src := constRows(n)
+			g.SetSource([]string{"id", "name"}, PermutedSource{Src: src, Perm: asc})
+			tc.mark(g)
+			want := g.SelectedRowCount()
+			oldPerm, newPerm := asc, desc
+			for b.Loop() {
+				g.SetSourceReordered([]string{"id", "name"}, PermutedSource{Src: src, Perm: newPerm}, oldPerm, newPerm)
+				oldPerm, newPerm = newPerm, oldPerm
+			}
+			if got := g.SelectedRowCount(); got != want {
+				b.Fatalf("marked rows = %d after the sorts, want %d", got, want)
+			}
+		})
+	}
+}

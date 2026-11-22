@@ -59,49 +59,110 @@ func (s PermutedSource) RowKind(i int) RowKind {
 // after; this keeps the old one.
 func (g *DataGrid) SetSourceReordered(columns []string, rows RowSource, oldPerm, newPerm []int) {
 	row, col := g.SelectedCell()
-	orig := -1
-	switch {
-	case oldPerm == nil:
-		if row >= 0 && row < g.rows.Len() {
-			orig = row
-		}
-	case row >= 0 && row < len(oldPerm):
-		orig = oldPerm[row]
+	shown := g.rows.Len()
+	if oldPerm != nil {
+		shown = len(oldPerm)
 	}
-	var marked []int // the marked rows, as indexes in the underlying order
-	if g.marking {
-		shown := g.rows.Len()
-		if oldPerm != nil {
-			shown = len(oldPerm)
+	under := func(i int) int { // a shown index of the old order -> underlying row
+		if oldPerm == nil {
+			return i
 		}
+		return oldPerm[i]
+	}
+	orig := -1
+	if row >= 0 && row < shown {
+		orig = under(row)
+	}
+	// A base run covering every row shown (Ctrl+A, then a Ctrl+click) is carried
+	// as a run over the new order, with only its flips moved: materialising it
+	// cost a million-int slice and two million-entry maps per sort.
+	marking, flips := g.marking, g.markFlips
+	allRun := marking && shown > 0 && g.markLo <= 0 && g.markHi >= shown-1
+	var marked []int // the marked rows, as indexes in the underlying order
+	if marking && !allRun {
 		for _, r := range g.SelectedRows() {
-			switch {
-			case r < 0 || r >= shown:
-			case oldPerm == nil:
-				marked = append(marked, r)
-			default:
-				marked = append(marked, oldPerm[r])
+			if r >= 0 && r < shown {
+				marked = append(marked, under(r))
 			}
 		}
 	}
 	g.SetSourcePreservingView(columns, rows)
-	if i := slices.Index(newPerm, orig); i >= 0 {
-		g.SetSelectedCell(i, col)
-	}
-	if len(marked) == 0 {
+	if !marking {
+		if i := slices.Index(newPerm, orig); i >= 0 {
+			g.SetSelectedCell(i, col)
+		}
 		return
 	}
-	at := make(map[int]int, len(newPerm)) // underlying row -> shown index
+	// at[r] is 1 + the shown index of underlying row r in the new order, 0 when
+	// the new order lacks it: a dense inverse, no hashing per row.
+	top := -1
+	for _, r := range newPerm {
+		top = max(top, r)
+	}
+	at := make([]int, top+1)
 	for i, r := range newPerm {
-		at[r] = i
+		at[r] = i + 1
+	}
+	pos := func(r int) int {
+		if r < 0 || r >= len(at) {
+			return -1
+		}
+		return at[r] - 1
+	}
+	if i := pos(orig); i >= 0 {
+		g.SetSelectedCell(i, col)
+	}
+	if allRun {
+		g.setAllMarkedReordered(flips, shown, under, pos, oldPerm, newPerm)
+		return
 	}
 	rowsNow := make([]int, 0, len(marked))
 	for _, r := range marked {
-		if i, ok := at[r]; ok {
+		if i := pos(r); i >= 0 {
 			rowsNow = append(rowsNow, i)
 		}
 	}
 	g.setMarkedRows(rowsNow)
+}
+
+// setAllMarkedReordered is SetSourceReordered's marks when the base run covered
+// every row shown: the new base run covers every row of newPerm, and the flips
+// are the old flips that still name a row (each unmarked it) plus the rows
+// newPerm holds that the old order did not show (never marked). No rows left
+// marked leaves no marks, as setMarkedRows does.
+func (g *DataGrid) setAllMarkedReordered(flips map[int]struct{}, shown int, under, pos func(int) int, oldPerm, newPerm []int) {
+	newFlips := make(map[int]struct{}, len(flips))
+	for f := range flips {
+		if f < shown { // a flip past the rows shown named no row
+			if i := pos(under(f)); i >= 0 {
+				newFlips[i] = struct{}{}
+			}
+		}
+	}
+	if oldPerm == nil {
+		for i, r := range newPerm {
+			if r >= shown {
+				newFlips[i] = struct{}{}
+			}
+		}
+	} else {
+		was := make([]bool, len(newPerm)) // indexed by new shown index
+		for _, r := range oldPerm {
+			if i := pos(r); i >= 0 {
+				was[i] = true
+			}
+		}
+		for i, ok := range was {
+			if !ok {
+				newFlips[i] = struct{}{}
+			}
+		}
+	}
+	if len(newFlips) >= len(newPerm) {
+		g.ClearMarkedRows()
+		return
+	}
+	g.markLo, g.markHi, g.markFlips, g.marking = 0, len(newPerm)-1, newFlips, true
 }
 
 // SortMenuItems are a grid cell menu's keyboard route to a header click (an
