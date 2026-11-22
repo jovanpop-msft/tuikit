@@ -3,6 +3,7 @@ package clipboard
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gdamore/tcell/v3"
 )
@@ -69,14 +70,23 @@ type Dispatcher struct {
 	// writeMu runs Copy's goroutines one at a time, and writeSeq numbers them,
 	// so of two quick copies the later one is what the clipboard ends up
 	// holding. See Copy.
-	//
+	writeMu  sync.Mutex
+	writeSeq atomic.Uint64
+
 	// doneSeq is the highest Copy number whose goroutine has finished (written
-	// or skipped), guarded by writeMu; writeDone is signalled on each finish.
-	// Paste waits on it so a read never overtakes a Copy issued before it.
-	writeMu   sync.Mutex
-	writeSeq  atomic.Uint64
-	doneSeq   uint64
-	writeDone *sync.Cond
+	// or skipped); doneCh is closed, and replaced, on each finish. Both are
+	// guarded by doneMu, never by writeMu: a Copy holds writeMu across its
+	// write, and a Win32 write can block indefinitely (EmptyClipboard waits on
+	// a hung previous owner), so a Paste that took writeMu to check doneSeq
+	// would hang with it. Paste waits on doneCh so a read never overtakes a
+	// Copy issued before it, but at most pasteWait.
+	doneMu  sync.Mutex
+	doneSeq uint64
+	doneCh  chan struct{}
+
+	// pasteWait bounds Paste's wait for earlier Copies; zero is
+	// defaultPasteWait. Tests shorten it.
+	pasteWait time.Duration
 
 	// bracket is a terminal bracketed paste in progress (see HandleEvent).
 	bracket PasteBuffer
@@ -95,13 +105,44 @@ func (d *Dispatcher) goroutine(what string, fn func()) {
 	go fn()
 }
 
-// done returns the condition variable on writeMu, created on first use (every
-// caller is on the UI goroutine, so the lazy init needs no lock).
-func (d *Dispatcher) done() *sync.Cond {
-	if d.writeDone == nil {
-		d.writeDone = sync.NewCond(&d.writeMu)
+// defaultPasteWait bounds how long Paste waits for earlier Copies to land: a
+// tool write gives up after toolTimeout, so past this the writer is stuck (a
+// Win32 write blocked on a hung clipboard owner), and reading a possibly stale
+// clipboard beats a Ctrl+V that never does anything.
+const defaultPasteWait = toolTimeout + time.Second
+
+// finished records that Copy number seq's goroutine is done and wakes every
+// Paste waiting on it.
+func (d *Dispatcher) finished(seq uint64) {
+	d.doneMu.Lock()
+	defer d.doneMu.Unlock()
+	d.doneSeq = max(d.doneSeq, seq)
+	if d.doneCh != nil {
+		close(d.doneCh)
+		d.doneCh = nil
 	}
-	return d.writeDone
+}
+
+// waitCopied blocks until every Copy up to seq has finished, or until the
+// deadline passes; it reports whether they all finished.
+func (d *Dispatcher) waitCopied(seq uint64, deadline <-chan time.Time) bool {
+	for {
+		d.doneMu.Lock()
+		if d.doneSeq >= seq {
+			d.doneMu.Unlock()
+			return true
+		}
+		if d.doneCh == nil {
+			d.doneCh = make(chan struct{})
+		}
+		ch := d.doneCh
+		d.doneMu.Unlock()
+		select {
+		case <-ch:
+		case <-deadline:
+			return false
+		}
+	}
 }
 
 func (d *Dispatcher) token() any {
@@ -127,15 +168,13 @@ func (d *Dispatcher) Copy(text string) {
 	if write == nil {
 		write = Write
 	}
-	cond := d.done()
 	d.goroutine("writing to the clipboard", func() {
 		d.writeMu.Lock()
 		defer func() {
+			d.writeMu.Unlock()
 			// Superseded copies count too: a Paste issued after them must
 			// not wait on a write that will never happen.
-			d.doneSeq = max(d.doneSeq, seq)
-			cond.Broadcast()
-			d.writeMu.Unlock()
+			d.finished(seq)
 		}()
 		if d.writeSeq.Load() != seq {
 			return
@@ -164,7 +203,8 @@ func (d *Dispatcher) Copies() uint64 { return d.writeSeq.Load() }
 // Paste runs a Ctrl+V: it resolves the target and token now, reads the native
 // clipboard on a background goroutine, and applies the text on the UI
 // goroutine through Deliver. The read waits for every earlier Copy to finish
-// writing. With no native tool it asks the terminal
+// writing, but no longer than pasteWait: past that a writer is stuck, and the
+// read goes ahead on what the clipboard holds. With no native tool it asks the terminal
 // (GetClipboard), whose reply arrives as an *tcell.EventClipboard for
 // HandleEvent. Nothing happens when Resolve names no target.
 func (d *Dispatcher) Paste() {
@@ -179,15 +219,17 @@ func (d *Dispatcher) Paste() {
 	}
 	// Every Copy issued before this Ctrl+V must land first, or a slow
 	// native writer (xclip, wl-copy, clip.exe over ssh) lets us read the
-	// old contents. writeMu is not held across the read itself.
+	// old contents. The wait is bounded (see defaultPasteWait), and never
+	// takes writeMu, which a stuck write holds.
 	seq := d.writeSeq.Load()
-	cond := d.done()
+	wait := d.pasteWait
+	if wait <= 0 {
+		wait = defaultPasteWait
+	}
 	d.goroutine("reading the clipboard", func() {
-		d.writeMu.Lock()
-		for d.doneSeq < seq {
-			cond.Wait()
-		}
-		d.writeMu.Unlock()
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		d.waitCopied(seq, timer.C)
 		text, ok := read()
 		d.Post(func() {
 			if ok {

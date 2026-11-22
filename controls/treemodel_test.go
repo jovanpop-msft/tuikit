@@ -442,3 +442,27 @@ func TestTreeModelSetChildrenUnretiresRedeliveredNode(t *testing.T) {
 		t.Fatal("re-delivered node reported released")
 	}
 }
+
+// Past 32 re-delivered nodes dropExcept hashes them: the kept ones stay live
+// and only the rest are retired, as with a short list.
+func TestTreeModelSetChildrenKeepsManyRedelivered(t *testing.T) {
+	tt := newTMTree()
+	root := tmNodes("r")[0]
+	tt.m.AddRoot(root)
+	names := make([]string, 40)
+	for i := range names {
+		names[i] = string(rune('A' + i))
+	}
+	kids := tt.deliver(root, names...)
+	keep := slices.Concat(kids[5:], tmNodes("new"))
+	tt.m.SetChildren(root, keep)
+	tt.m.Rebuild()
+	if !slices.Equal(tt.retired, kids[:5]) {
+		t.Fatalf("retired %d nodes, want exactly the 5 not re-delivered", len(tt.retired))
+	}
+	for _, k := range kids[5:] {
+		if k.Retired() {
+			t.Fatalf("re-delivered node %q was retired", k.name)
+		}
+	}
+}

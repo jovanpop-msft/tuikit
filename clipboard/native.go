@@ -85,6 +85,12 @@ func detect(lookPath func(string) (string, error)) *method {
 // toolTimeout bounds a clipboard tool's run.
 const toolTimeout = 2 * time.Second
 
+// toolWaitDelay bounds how long Run/Output wait for the tool's pipes to close
+// after it was killed or exited: a tool that leaves a child holding one of its
+// pipes would otherwise hold the call past toolTimeout (killing the tool does
+// not kill the child).
+const toolWaitDelay = 500 * time.Millisecond
+
 // runIn runs name(args...) with text piped to stdin, for a copy command.
 // Returns false if the tool isn't available or the invocation fails.
 func runIn(text string, name string, args ...string) bool {
@@ -92,6 +98,7 @@ func runIn(text string, name string, args ...string) bool {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(text)
+	cmd.WaitDelay = toolWaitDelay
 	return cmd.Run() == nil
 }
 
@@ -104,6 +111,7 @@ func runOut(name string, args ...string) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), toolTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = toolWaitDelay
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false
