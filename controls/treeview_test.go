@@ -821,6 +821,58 @@ func treeTopRow(t *testing.T, tv *TreeView) (string, []tcell.Style) {
 // The title button is "[label]" just inside the top-right corner; while on
 // reports true it shows "[onLabel]". The label keeps the panel style in both
 // states (no selection background), the brackets the border's.
+func TestTreeViewCloseButtonSharesTitleBorder(t *testing.T) {
+	for _, width := range []int{30, 10, 9, 5, 4} {
+		tv := NewTreeView()
+		tv.SetBounds(0, 0, width, 10)
+		tv.SetTitle("Object Explorer")
+		tv.SetTitleButton("S", "G", nil, nil)
+		tv.SetCloseButton(func() {})
+		row, _ := treeTopRow(t, tv)
+		if strings.Contains(row, "[x]") != (width >= 5) {
+			t.Errorf("width %d: close button in %q", width, row)
+		}
+		if width >= 9 && !strings.HasSuffix(row, "[S]─[x]┐") {
+			t.Errorf("width %d: buttons overlap or are out of order: %q", width, row)
+		}
+		if width >= 5 && !strings.HasSuffix(row, "[x]┐") {
+			t.Errorf("width %d: close button not in right corner: %q", width, row)
+		}
+		if width == 30 && !strings.Contains(row, " Object Explorer ") {
+			t.Errorf("title unnecessarily truncated: %q", row)
+		}
+		tv.SetCloseButton(nil)
+		if row, _ := treeTopRow(t, tv); strings.Contains(row, "[x]") {
+			t.Errorf("removed close button still drawn: %q", row)
+		}
+	}
+}
+
+func TestTreeViewCloseButtonDoesNotReplayIntoRows(t *testing.T) {
+	tv := newTestTreeViewExpandable()
+	tv.SetTitle("Object Explorer")
+	original := tv.Bounds()
+	closed := 0
+	tv.SetCloseButton(func() {
+		closed++
+		tv.SetBounds(0, 0, 0, 0)
+	})
+	tv.OnSelect = func(TreeNodeID) { t.Error("close selected a row") }
+	tv.OnExpand = func(TreeNodeID) { t.Error("close expanded a row") }
+	bx := original.Right() - 3
+	tv.HandleMouse(tcell.NewEventMouse(bx, 0, tcell.Button1, tcell.ModNone))
+	tv.HandleMouse(tcell.NewEventMouse(bx, 2, tcell.Button1, tcell.ModNone))
+	tv.HandleMouse(tcell.NewEventMouse(bx, 2, tcell.ButtonNone, tcell.ModNone))
+	tv.SetBounds(original.X, original.Y, original.W, original.H)
+	clickRow(tv, bx, 0)
+	if closed != 2 {
+		t.Fatalf("close ran %d times, want once per fresh press", closed)
+	}
+	if tv.nodes[0].Expanded || tv.sel != 0 {
+		t.Fatal("close changed the tree")
+	}
+}
+
 func TestTreeViewTitleButtonDrawsRightAligned(t *testing.T) {
 	tv := newTestTreeView()
 	tv.SetTitle("Object Explorer")

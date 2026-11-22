@@ -131,7 +131,7 @@ tuikit/
 │               hit-test, "More ▾"; drawn by the host), tab_bar.go (TabBar:
 │               a one-row strip of plain tabs plus an optional right-aligned
 │               cell, draw and hit-test over TabStripSegments), treeview.go (with an
-│               optional top-border action, SetTitleButton),
+│               optional top-border action, SetTitleButton, and SetCloseButton),
 │               treemodel.go (TreeModel: a lazily loaded tree projected
 │               into a TreeView; host nodes embed TreeItem), listbox.go;
 │               DataGrid: datagrid.go (state/source/widths), _draw, _input,

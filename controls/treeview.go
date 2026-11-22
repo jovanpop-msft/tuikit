@@ -73,6 +73,7 @@ type TreeView struct {
 	// titleButton is the action pinned to the right end of the top border (see
 	// SetTitleButton); an empty label draws none.
 	titleButton titleButton
+	closeButton titleButton
 
 	// clicks pairs presses on one node into a double-click (the mouse spelling of
 	// Enter's default action). Keyed by node ID, not index into nodes: a SetNodes
@@ -128,7 +129,7 @@ func NewTreeView() *TreeView {
 func (tv *TreeView) SetTitle(title string) { tv.title = title }
 
 // SetTitleButton pins a clickable "[label]" to the right end of the top
-// border, just inside the corner. A click on it runs action; while on reports
+// border, before the optional close button. A click on it runs action; while on reports
 // true (nil: never) it shows "[onLabel]" instead, so a toggle shows its state
 // by its label alone. An empty label removes it. The button shows only while the
 // centred title ends at least one border cell before it: on a narrower tree it
@@ -142,16 +143,29 @@ func (tv *TreeView) SetTitleButton(label, onLabel string, on func() bool, action
 // SetTitleButton, which resets the button.
 func (tv *TreeView) SetTitleButtonTip(tip string) { tv.titleButton.tip = tip }
 
-// DrawOverlay draws the title button's hover hint, right-aligned to the button
+// SetCloseButton adds "[x]" in the top-right corner, or removes it when action
+// is nil. With a close button, the title yields space to the buttons.
+func (tv *TreeView) SetCloseButton(action func()) {
+	tv.closeButton = titleButton{action: action}
+	if action != nil {
+		tv.closeButton.label, tv.closeButton.tip = "x", "Close"
+	}
+}
+
+// DrawOverlay draws a title button's hover hint, right-aligned to the button
 // on the first row under the border and clamped to the screen. Hosts call it
 // after every panel has drawn, as with Toolbar.DrawOverlay, since the hint
 // overlaps the rows beneath.
 func (tv *TreeView) DrawOverlay(s tcell.Screen) {
 	b := tv.titleButton
+	btn, ok := tv.titleButtonRect()
+	if tv.closeButton.hover {
+		b = tv.closeButton
+		btn, ok = tv.closeButtonRect()
+	}
 	if !b.hover || b.tip == "" {
 		return
 	}
-	btn, ok := tv.titleButtonRect()
 	if !ok {
 		return
 	}
@@ -180,6 +194,13 @@ func (tv *TreeView) titleButtonRect() (core.Rect, bool) {
 	}
 	w := core.DisplayWidth(b.text()) + 2
 	x := tv.rect.Right() - 1 - w
+	if tv.closeButton.action != nil {
+		x -= 4
+		if x < tv.rect.X+1 {
+			return core.Rect{}, false
+		}
+		return core.Rect{X: x, Y: tv.rect.Y, W: w, H: 1}, true
+	}
 	// The first column past the title, laid out as DrawBoxTitle centres it; with
 	// no title, the one past the top-left corner.
 	titleEnd := tv.rect.X + 1
@@ -191,6 +212,17 @@ func (tv *TreeView) titleButtonRect() (core.Rect, bool) {
 		return core.Rect{}, false
 	}
 	return core.Rect{X: x, Y: tv.rect.Y, W: w, H: 1}, true
+}
+
+func (tv *TreeView) closeButtonRect() (core.Rect, bool) {
+	if tv.closeButton.action == nil || tv.rect.H < 1 {
+		return core.Rect{}, false
+	}
+	x := tv.rect.Right() - 1 - 3
+	if x < tv.rect.X+1 {
+		return core.Rect{}, false
+	}
+	return core.Rect{X: x, Y: tv.rect.Y, W: 3, H: 1}, true
 }
 
 // SetBounds positions the tree view. An unchanged rect changes nothing; a changed
@@ -306,7 +338,24 @@ func (tv *TreeView) Draw(s tcell.Screen) {
 	}
 	titleStyle := theme.On(p.PanelBg, p.TextHighlight).Bold(true)
 	core.FillRect(s, tv.rect, ' ', theme.StylePanel())
-	core.DrawBoxTitle(s, tv.rect, tv.title, borderStyle, titleStyle)
+	if btn, ok := tv.closeButtonRect(); ok {
+		core.DrawBox(s, tv.rect, borderStyle)
+		if tv.title != "" {
+			titleEnd := btn.X
+			if titleBtn, ok := tv.titleButtonRect(); ok {
+				titleEnd = titleBtn.X
+			}
+			text := " " + tv.title + " "
+			w := min(core.DisplayWidth(text), max(0, titleEnd-tv.rect.X-2))
+			x := max(tv.rect.X+1, min(tv.rect.X+(tv.rect.W-w)/2, titleEnd-1-w))
+			core.DrawTextClipped(s, x, tv.rect.Y, w, titleStyle, text)
+		}
+		core.PutRune(s, btn.X, btn.Y, '[', borderStyle)
+		core.DrawText(s, btn.X+1, btn.Y, theme.StylePanel(), "x")
+		core.PutRune(s, btn.Right()-1, btn.Y, ']', borderStyle)
+	} else {
+		core.DrawBoxTitle(s, tv.rect, tv.title, borderStyle, titleStyle)
+	}
 	if btn, ok := tv.titleButtonRect(); ok {
 		core.PutRune(s, btn.X, btn.Y, '[', borderStyle)
 		core.DrawText(s, btn.X+1, btn.Y, theme.StylePanel(), tv.titleButton.text())
@@ -468,6 +517,8 @@ func (tv *TreeView) HandleMouse(ev *tcell.EventMouse) bool {
 	}
 	btn, onBtn := tv.titleButtonRect()
 	tv.titleButton.hover = onBtn && btn.Contains(mx, my)
+	close, onClose := tv.closeButtonRect()
+	tv.closeButton.hover = onClose && close.Contains(mx, my)
 	// Ahead of the bounds test: a thumb drag keeps control once the mouse leaves
 	// the tree, so a fast drag still reaches the end, and a press that acted
 	// (a row, the title button) swallows its resends wherever they land.
@@ -500,6 +551,11 @@ func (tv *TreeView) HandleMouse(ev *tcell.EventMouse) bool {
 	// never selects, expands or arms a drag (hosts arm from NodeIDAt, which
 	// rejects the border). A press runs the action once; its resends are the
 	// gesture's, and a hold that began on a row and drifted here is that row's.
+	if tv.closeButton.hover && ev.Buttons() == tcell.Button1 {
+		tv.closeButton.action()
+		tv.gesture.Arm(ev, treeActed)
+		return true
+	}
 	if onBtn && btn.Contains(mx, my) && ev.Buttons() == tcell.Button1 {
 		if tv.titleButton.action != nil {
 			tv.titleButton.action()
