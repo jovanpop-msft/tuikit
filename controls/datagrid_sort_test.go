@@ -234,6 +234,35 @@ func TestSetSourceReorderedKeepsMarks(t *testing.T) {
 	}
 }
 
+// A nil newPerm is the identity over the new rows, as a nil oldPerm is over the
+// old: clearing a sort by passing nil keeps the cursor's row and the marks
+// (plain and all-rows run). It used to read as an empty order and drop both.
+func TestSetSourceReorderedNilNewPermIsTheIdentity(t *testing.T) {
+	base := SliceRowSource{{"c"}, {"a"}, {"d"}, {"b"}}
+	asc := []int{1, 3, 0, 2} // a b c d
+	g := newTestDataGrid()
+	g.SetCellCursor(true)
+	g.SetSource([]string{"N"}, PermutedSource{Src: base, Perm: asc})
+	g.SetSelectedCell(2, 0) // c
+	markForReorder(g, 0, 3) // a, d; the cursor ends on d
+	g.SetSourceReordered([]string{"N"}, base, asc, nil)
+	if row, _ := g.SelectedCell(); row != 2 {
+		t.Errorf("cursor row = %d after clearing the sort, want 2 (d)", row)
+	}
+	if got := g.SelectedRows(); !slices.Equal(got, []int{0, 1, 2}) {
+		t.Errorf("marked after clearing the sort = %v, want [0 1 2] (c a d)", got)
+	}
+
+	// An all-rows run with one row unpicked.
+	g.SetSource([]string{"N"}, PermutedSource{Src: base, Perm: asc})
+	g.selAnchorRow, g.selRow, g.blockSelecting = 0, 3, true
+	markForReorder(g, 1) // unpick b
+	g.SetSourceReordered([]string{"N"}, base, asc, nil)
+	if got := g.SelectedRows(); !slices.Equal(got, []int{0, 1, 2}) {
+		t.Errorf("run marked after clearing the sort = %v, want [0 1 2] (c a d)", got)
+	}
+}
+
 // SortMenuItems offers both directions, greys the one in force, and applies
 // the one picked.
 func TestSortMenuItems(t *testing.T) {
