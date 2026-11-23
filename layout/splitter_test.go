@@ -255,3 +255,89 @@ func TestStackSplitterPreset(t *testing.T) {
 		t.Errorf("label at (%d,%d) found=%v, want (2,%d) on the bar", x, y, ok, sp.SplitPos())
 	}
 }
+
+// TestSplitterCollapse: a collapsed pane's rect is empty and the other takes
+// the whole rect; the bar neither draws nor takes keys or a press where it
+// was; the ratio survives for the restore; and a gesture pressed while
+// collapsed cannot grab the restored bar mid-drag (the latch kept tracking).
+func TestSplitterCollapse(t *testing.T) {
+	for _, dir := range []SplitterDir{SplitterVertical, SplitterHorizontal} {
+		sp := NewSplitter(dir, 0.3)
+		sp.SetBounds(2, 1, 80, 24)
+		whole := sp.Bounds()
+		ratio, bar := sp.Ratio(), sp.SplitPos()
+		first, second := sp.FirstRect(), sp.SecondRect()
+
+		sp.SetCollapsed(CollapseFirst)
+		if sp.Collapsed() != CollapseFirst || sp.SecondRect() != whole {
+			t.Fatalf("dir %d: second = %+v, want the whole rect", dir, sp.SecondRect())
+		}
+		if f := sp.FirstRect(); f.X != whole.X || f.Y != whole.Y || f.W*f.H != 0 || f.Contains(whole.X, whole.Y) {
+			t.Fatalf("dir %d: collapsed first = %+v, want empty at the origin", dir, f)
+		}
+		sp.SetCollapsed(CollapseSecond)
+		if sp.FirstRect() != whole {
+			t.Fatalf("dir %d: first = %+v, want the whole rect", dir, sp.FirstRect())
+		}
+		if s := sp.SecondRect(); s.Right() != whole.Right() || s.Bottom() != whole.Bottom() || s.W*s.H != 0 {
+			t.Fatalf("dir %d: collapsed second = %+v, want empty at the end", dir, s)
+		}
+
+		sp.SetCollapsed(CollapseFirst)
+		key := tcell.NewEventKey(tcell.KeyRight, "", tcell.ModCtrl)
+		if dir == SplitterHorizontal {
+			key = tcell.NewEventKey(tcell.KeyDown, "", tcell.ModCtrl)
+		}
+		if sp.HandleKey(key) {
+			t.Fatalf("dir %d: collapsed splitter consumed a resize key", dir)
+		}
+		x, y := bar, 5
+		if dir == SplitterHorizontal {
+			x, y = 5, bar
+		}
+		if sp.HandleMouse(tuikittest.Press(x, y)) {
+			t.Fatalf("dir %d: collapsed splitter consumed a press where the bar was", dir)
+		}
+		scr := tuikittest.NewMockScreen(t, 90, 30)
+		blank, _, _ := scr.Get(x, y)
+		sp.Draw(scr)
+		if str, _, _ := scr.Get(x, y); str != blank {
+			t.Fatalf("dir %d: collapsed splitter drew %q at the bar", dir, str)
+		}
+
+		// Restore with the button still held: the press began while
+		// collapsed, so the bar under the pointer stays put.
+		sp.SetCollapsed(CollapseNone)
+		if sp.HandleMouse(tuikittest.Press(x, y)) {
+			t.Fatalf("dir %d: restored bar grabbed a press begun while collapsed", dir)
+		}
+		sp.HandleMouse(tuikittest.Release(x, y))
+		if sp.Ratio() != ratio || sp.FirstRect() != first || sp.SecondRect() != second {
+			t.Fatalf("dir %d: restore lost the split: ratio %v first %+v second %+v", dir, sp.Ratio(), sp.FirstRect(), sp.SecondRect())
+		}
+		if !sp.HandleMouse(tuikittest.Press(x, y)) {
+			t.Fatalf("dir %d: restored bar does not take a fresh press", dir)
+		}
+		sp.HandleMouse(tuikittest.Release(x, y))
+	}
+}
+
+// TestSplitterCollapseEndsDrag: collapsing mid-drag drops the drag, so the
+// rest of the gesture is not consumed and the ratio holds.
+func TestSplitterCollapseEndsDrag(t *testing.T) {
+	sp := NewSplitter(SplitterVertical, 0.5)
+	sp.SetBounds(0, 0, 80, 24)
+	bar := sp.SplitPos()
+	if !sp.HandleMouse(tuikittest.Press(bar, 5)) {
+		t.Fatal("press on the bar not consumed")
+	}
+	ratio := sp.Ratio()
+	sp.SetCollapsed(CollapseFirst)
+	if sp.HandleMouse(tuikittest.Press(bar+10, 5)) || sp.HandleMouse(tuikittest.Release(bar+10, 5)) {
+		t.Fatal("collapsed splitter consumed the rest of the drag")
+	}
+	sp.SetCollapsed(CollapseNone)
+	if sp.Ratio() != ratio {
+		t.Fatalf("ratio %v after a drag cut by a collapse, want %v", sp.Ratio(), ratio)
+	}
+}
