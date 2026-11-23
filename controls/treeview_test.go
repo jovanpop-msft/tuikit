@@ -905,37 +905,72 @@ func TestTreeViewTitleButtonDrawsRightAligned(t *testing.T) {
 	}
 }
 
-// The button hides rather than truncate the title: it shows only with at
-// least one border cell between the centred title and itself, and a click
-// where a hidden button would be does nothing.
-func TestTreeViewTitleButtonHidesWhenTooNarrow(t *testing.T) {
-	fired := 0
+// The buttons win the border over the title, with or without a close button
+// (the two used to follow opposite rules): the title shifts left, then
+// truncates with "…", always one border cell short of the leftmost button. A
+// button hides only when it cannot fit inside the corners, and a click where a
+// hidden button would be does nothing.
+func TestTreeViewTitleYieldsToButtons(t *testing.T) {
 	for _, tc := range []struct {
-		w    int
-		show bool
+		w      int
+		close  bool
+		want   string // the whole top border
+		button bool
 	}{
-		// " Object Explorer " is 17 wide; centred in 26 it spans columns 4–20,
-		// leaving column 21 as border before "[S]" at 22–24.
-		{26, true},
-		{25, false},
-		{20, false},
+		// " Object Explorer " is 17 wide.
+		{26, false, "┌─── Object Explorer ─[S]┐", true},    // centred, fits
+		{25, false, "┌── Object Explorer ─[S]┐", true},     // shifted left
+		{23, false, "┌ Object Explorer ─[S]┐", true},       // shifted to the corner
+		{20, false, "┌ Object Expl… ─[S]┐", true},          // truncated
+		{30, true, "┌─── Object Explorer ─[S]─[x]┐", true}, // centred, fits
+		{20, true, "┌─ Object… ─[S]─[x]┐", true},           // no space before "…"
+		{14, true, "┌ O… ─[S]─[x]┐", true},
+		{13, true, "┌────[S]─[x]┐", true}, // a lone "…" draws no title
+		{11, true, "┌──[S]─[x]┐", true},   // no room for a title
+		{8, true, "┌───[x]┐", false},      // room for "[x]" only
 	} {
 		tv := NewTreeView()
 		tv.SetBounds(0, 0, tc.w, 10)
 		tv.SetTitle("Object Explorer")
+		fired := 0
 		tv.SetTitleButton("S", "S", nil, func() { fired++ })
+		if tc.close {
+			tv.SetCloseButton(func() {})
+		}
 		row, _ := treeTopRow(t, tv)
-		if got := strings.Contains(row, "[S]"); got != tc.show {
-			t.Errorf("width %d: border = %q, button shown = %v, want %v", tc.w, row, got, tc.show)
+		if row != tc.want {
+			t.Errorf("width %d, close %v: border = %q, want %q", tc.w, tc.close, row, tc.want)
 		}
-		if !strings.Contains(row, " Object Explorer ") {
-			t.Errorf("width %d: border = %q, title truncated", tc.w, row)
+		if l := tv.titleLayout(); l.hasButton != tc.button {
+			t.Errorf("width %d, close %v: button shown = %v, want %v", tc.w, tc.close, l.hasButton, tc.button)
 		}
-		if !tc.show {
-			clickRow(tv, tc.w-3, 0)
-			if fired != 0 {
-				t.Errorf("width %d: a click where the hidden button would be fired it", tc.w)
-			}
+		bx := tc.w - 3
+		if tc.close {
+			bx -= 4
+		}
+		clickRow(tv, bx, 0)
+		if want := map[bool]int{true: 1, false: 0}[tc.button]; fired != want {
+			t.Errorf("width %d, close %v: a click on the button's place fired it %d times, want %d", tc.w, tc.close, fired, want)
+		}
+	}
+}
+
+// A tree with no buttons draws its title as core.DrawBoxTitle does, up to the
+// corner, and truncates it with "…" rather than clip it.
+func TestTreeViewTitleWithoutButtons(t *testing.T) {
+	for _, tc := range []struct {
+		w    int
+		want string
+	}{
+		{21, "┌─ Object Explorer ─┐"},
+		{19, "┌ Object Explorer ┐"},
+		{12, "┌ Object… ─┐"},
+	} {
+		tv := NewTreeView()
+		tv.SetBounds(0, 0, tc.w, 10)
+		tv.SetTitle("Object Explorer")
+		if row, _ := treeTopRow(t, tv); row != tc.want {
+			t.Errorf("width %d: border = %q, want %q", tc.w, row, tc.want)
 		}
 	}
 }
@@ -991,7 +1026,8 @@ func TestTreeViewTitleButtonTipShowsOnHover(t *testing.T) {
 	tv.SetTitle("Object Explorer")
 	tv.SetTitleButton("S", "G", nil, nil)
 	tv.SetTitleButtonTip("Group by Schema")
-	btn, ok := tv.titleButtonRect()
+	l := tv.titleLayout()
+	btn, ok := l.button, l.hasButton
 	if !ok {
 		t.Fatal("title button hidden")
 	}
