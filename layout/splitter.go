@@ -20,6 +20,15 @@ const (
 	SplitterHorizontal                    // row divider (top/bottom panes)
 )
 
+// SplitterCollapse names the pane a Splitter has collapsed, if any.
+type SplitterCollapse int
+
+const (
+	CollapseNone   SplitterCollapse = iota // both panes and the bar show
+	CollapseFirst                          // the first (top or left) pane is hidden
+	CollapseSecond                         // the second (bottom or right) pane is hidden
+)
+
 // Splitter is a draggable divider between two panel regions.
 // It owns the geometry calculation; the caller owns the two child panels.
 type Splitter struct {
@@ -33,6 +42,7 @@ type Splitter struct {
 	posBase  int    // SplitPos when the drag started
 	label    string // optional label drawn on the splitter bar
 	active   bool   // see Focus
+	collapse SplitterCollapse
 
 	// press is held from the first Button1 of a gesture until its release,
 	// wherever the press landed: HandleMouse calls Fresh on every event, not only
@@ -101,6 +111,25 @@ func (sp *Splitter) Focus(v bool) { sp.active = v }
 
 func (sp *Splitter) Focused() bool { return sp.active }
 
+// SetCollapsed hides one pane, giving the other the whole rect, or restores
+// both with CollapseNone. While collapsed there is no bar: Draw draws nothing,
+// HandleKey and HandleMouse consume nothing, the hidden pane's rect is empty
+// (zero width or height, at the edge it sat on), so a host hit-testing
+// through FirstRect/SecondRect needs no flag of its own. The ratio is kept,
+// so a restore puts the bar back where it was. A drag in progress ends.
+func (sp *Splitter) SetCollapsed(c SplitterCollapse) {
+	if c < CollapseNone || c > CollapseSecond {
+		return
+	}
+	sp.collapse = c
+	if c != CollapseNone {
+		sp.dragging = false
+	}
+}
+
+// Collapsed returns the pane SetCollapsed hid, or CollapseNone.
+func (sp *Splitter) Collapsed() SplitterCollapse { return sp.collapse }
+
 // Ratio returns the current split ratio.
 func (sp *Splitter) Ratio() float64 { return sp.ratio }
 
@@ -122,7 +151,8 @@ func (sp *Splitter) axis() (origin, size int) {
 	return sp.rect.X, sp.rect.W
 }
 
-// SplitPos returns the absolute screen coordinate of the divider line. It
+// SplitPos returns the absolute screen coordinate of the divider line —
+// while collapsed, where the bar will be once restored. It
 // stays inside the rect whatever the ratio: a ratio of 1 (SetLimits allows
 // it) would otherwise put the bar one past the end and give SecondRect a
 // negative size.
@@ -149,8 +179,18 @@ func (sp *Splitter) setPos(target int) {
 	sp.ratio = core.Clamp(r, sp.minRatio, sp.maxRatio)
 }
 
-// FirstRect returns the rect for the first (top or left) pane.
+// FirstRect returns the rect for the first (top or left) pane: the whole rect
+// when the second is collapsed, an empty one at the start when it is.
 func (sp *Splitter) FirstRect() core.Rect {
+	switch sp.collapse {
+	case CollapseFirst:
+		if sp.dir == SplitterHorizontal {
+			return core.Rect{X: sp.rect.X, Y: sp.rect.Y, W: sp.rect.W}
+		}
+		return core.Rect{X: sp.rect.X, Y: sp.rect.Y, H: sp.rect.H}
+	case CollapseSecond:
+		return sp.rect
+	}
 	pos := sp.SplitPos()
 	if sp.dir == SplitterHorizontal {
 		return core.Rect{X: sp.rect.X, Y: sp.rect.Y, W: sp.rect.W, H: pos - sp.rect.Y}
@@ -158,8 +198,18 @@ func (sp *Splitter) FirstRect() core.Rect {
 	return core.Rect{X: sp.rect.X, Y: sp.rect.Y, W: pos - sp.rect.X, H: sp.rect.H}
 }
 
-// SecondRect returns the rect for the second (bottom or right) pane.
+// SecondRect returns the rect for the second (bottom or right) pane: the
+// whole rect when the first is collapsed, an empty one at the end when it is.
 func (sp *Splitter) SecondRect() core.Rect {
+	switch sp.collapse {
+	case CollapseFirst:
+		return sp.rect
+	case CollapseSecond:
+		if sp.dir == SplitterHorizontal {
+			return core.Rect{X: sp.rect.X, Y: sp.rect.Bottom(), W: sp.rect.W}
+		}
+		return core.Rect{X: sp.rect.Right(), Y: sp.rect.Y, H: sp.rect.H}
+	}
 	pos := sp.SplitPos()
 	if sp.dir == SplitterHorizontal {
 		afterBar := pos + 1
@@ -169,8 +219,11 @@ func (sp *Splitter) SecondRect() core.Rect {
 	return core.Rect{X: afterBar, Y: sp.rect.Y, W: sp.rect.X + sp.rect.W - afterBar, H: sp.rect.H}
 }
 
-// Draw renders the divider line.
+// Draw renders the divider line, or nothing while collapsed.
 func (sp *Splitter) Draw(s tcell.Screen) {
+	if sp.collapse != CollapseNone {
+		return
+	}
 	p := theme.Active()
 	barColor := p.Splitter
 	if sp.dragging {
@@ -195,8 +248,12 @@ func (sp *Splitter) Draw(s tcell.Screen) {
 // HandleKey moves the bar with Ctrl+Arrow, a twentieth of the rect per press
 // but never less than one cell: a fixed 0.05 ratio step is half a cell on a
 // 10-wide split, so some presses didn't move it. Shift must be unheld so it
-// doesn't swallow Ctrl+Shift combos (e.g. the editor's "move line").
+// doesn't swallow Ctrl+Shift combos (e.g. the editor's "move line"). A
+// collapsed splitter has no bar to move and consumes nothing.
 func (sp *Splitter) HandleKey(ev *tcell.EventKey) bool {
+	if sp.collapse != CollapseNone {
+		return false
+	}
 	isResizeMod := ev.Modifiers()&tcell.ModCtrl != 0 && ev.Modifiers()&tcell.ModShift == 0
 	if !isResizeMod {
 		return false
@@ -220,13 +277,18 @@ func (sp *Splitter) HandleKey(ev *tcell.EventKey) bool {
 
 // HandleMouse handles drag events on the bar and reports whether it consumed
 // them. A resize begins only on a press on the bar (see press), so the
-// host must pass every Button1 event through here.
+// host must pass every Button1 event through here. A collapsed splitter
+// consumes nothing, but still tracks the press latch, so a gesture begun
+// while collapsed cannot grab the bar after a restore.
 func (sp *Splitter) HandleMouse(ev *tcell.EventMouse) bool {
 	mx, my := ev.Position()
 	pos := sp.SplitPos()
 
 	sp.press.Release(ev)
 	fresh := sp.press.Fresh(ev)
+	if sp.collapse != CollapseNone {
+		return false
+	}
 
 	onBar := false
 	if sp.dir == SplitterHorizontal {

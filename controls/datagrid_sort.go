@@ -47,8 +47,9 @@ func (s PermutedSource) RowKind(i int) RowKind {
 // the sort indicator, as SetSourcePreservingView does. oldPerm and newPerm map
 // each shown index to the row's index in the host's underlying order — the
 // order before and after; a nil oldPerm is the identity over the rows shown
-// now (nothing was sorted). When the cursor's row is not in newPerm the cursor
-// stays on its index.
+// now (nothing was sorted), and a nil newPerm the identity over rows (the sort
+// cleared). When the cursor's row is not in newPerm the cursor stays on its
+// index.
 //
 // Ctrl+click marks follow their rows too, so a user who marks rows and sorts
 // to check them still copies those rows; a marked row missing from newPerm is
@@ -58,6 +59,14 @@ func (s PermutedSource) RowKind(i int) RowKind {
 // The host sets the indicator for the new order (SetSortIndicator) before or
 // after; this keeps the old one.
 func (g *DataGrid) SetSourceReordered(columns []string, rows RowSource, oldPerm, newPerm []int) {
+	// A nil newPerm read literally is an empty order, which drops the cursor's
+	// row and every mark: the opposite of what nil means for oldPerm.
+	if newPerm == nil {
+		newPerm = make([]int, rows.Len())
+		for i := range newPerm {
+			newPerm[i] = i
+		}
+	}
 	row, col := g.SelectedCell()
 	shown := g.rows.Len()
 	if oldPerm != nil {
