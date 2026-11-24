@@ -43,6 +43,13 @@ go test -race -count=1 ./<pkg>/...   # a change crossing goroutines
 Green unit tests are not verification: build goSSMS against this tree and
 drive the changed widget in its binary (`~/go/gossms/docs/testing.md`).
 
+## Release docs
+
+`CHANGELOG.md` (history, newest first, with a *Migrating* section for breaking
+changes) and `RELEASE.md` (current release only: New / Fixes / Changes, short
+bullets). Replace `RELEASE.md` wholesale each release; update README and
+ARCHITECTURE for any new package or file.
+
 ## Repo hygiene
 
 - Don't commit, amend, push or tag. The user does that.

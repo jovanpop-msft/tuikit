@@ -472,6 +472,12 @@ via its `FileSystem` interface, so a host can point it at another machine
 callers stay local. A dialog with a text field also follows
 `ARCHITECTURE.md` § dialogs.FieldGesture.
 
+## Versioning
+
+`CHANGELOG.md` is the history and migration guide, newest first; `RELEASE.md` is
+the current release in brief. Before v1.0 a minor release may break the API;
+the changelog's *Migrating* section says how.
+
 ## Development
 
 `go build ./... && go vet ./... && go test ./...`; `staticcheck ./...` stays
