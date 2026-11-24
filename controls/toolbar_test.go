@@ -75,6 +75,73 @@ func TestToolbarDragOffAndBackDoesNotRefire(t *testing.T) {
 	}
 }
 
+// newTestDividedToolbar lays out A 0-2, | 3-5, B 6-8, each button counting
+// into its own counter.
+func newTestDividedToolbar(a, b *int) *Toolbar {
+	tb := NewToolbar()
+	tb.SetButtons([]ToolbarButton{
+		{Icon: "A", Action: func() { *a++ }},
+		{Icon: "|", Divider: true},
+		{Icon: "B", Action: func() { *b++ }},
+	})
+	tb.SetBounds(0, 0, 9)
+	return tb
+}
+
+// TestToolbarPressOnDividerDraggedOntoButtonDoesNotFire: a press on a divider
+// claims the latch, so the held Button1 resent over B is not a click on B.
+func TestToolbarPressOnDividerDraggedOntoButtonDoesNotFire(t *testing.T) {
+	var a, b int
+	tb := newTestDividedToolbar(&a, &b)
+
+	tb.HandleMouse(tuikittest.Press(4, 0)) // on the divider
+	tb.HandleMouse(tuikittest.Press(7, 0)) // held, onto B
+	if a != 0 || b != 0 {
+		t.Fatalf("Action calls after divider press dragged onto B = A %d, B %d, want 0, 0", a, b)
+	}
+
+	// The release clears the latch: the next press on B fires it.
+	tb.HandleMouse(tuikittest.Release(7, 0))
+	tb.HandleMouse(tuikittest.Press(7, 0))
+	if b != 1 {
+		t.Fatalf("B calls after release + press on B = %d, want 1", b)
+	}
+}
+
+// TestToolbarPressOutsideDraggedOntoButtonDoesNotFire: a press that began
+// outside the rect and drifts in is not a click on the button it reaches,
+// and its release outside the rect still clears the latch.
+func TestToolbarPressOutsideDraggedOntoButtonDoesNotFire(t *testing.T) {
+	var a, b int
+	tb := newTestDividedToolbar(&a, &b)
+
+	tb.HandleMouse(tuikittest.Press(1, 5)) // below the toolbar row
+	tb.HandleMouse(tuikittest.Press(1, 0)) // held, onto A
+	if a != 0 {
+		t.Fatalf("A calls after outside press dragged onto A = %d, want 0", a)
+	}
+
+	tb.HandleMouse(tuikittest.Release(1, 5)) // released outside
+	tb.HandleMouse(tuikittest.Press(1, 0))
+	if a != 1 {
+		t.Fatalf("A calls after outside release + press on A = %d, want 1", a)
+	}
+}
+
+// TestToolbarButtonPressFiresOnceAcrossResends: an ordinary press on a button
+// fires once, and its resends (including onto another button) do not.
+func TestToolbarButtonPressFiresOnceAcrossResends(t *testing.T) {
+	var a, b int
+	tb := newTestDividedToolbar(&a, &b)
+
+	tb.HandleMouse(tuikittest.Press(1, 0))
+	tb.HandleMouse(tuikittest.Press(2, 0))
+	tb.HandleMouse(tuikittest.Press(7, 0))
+	if a != 1 || b != 0 {
+		t.Fatalf("Action calls = A %d, B %d, want 1, 0", a, b)
+	}
+}
+
 // newTestDisabledToolbar mirrors newTestToolbar but the button is always
 // disabled — the shared fixture for the Enabled-gating tests below.
 func newTestDisabledToolbar(action func()) *Toolbar {
