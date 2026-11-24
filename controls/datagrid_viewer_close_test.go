@@ -70,8 +70,8 @@ func TestDataGridViewerCloseButtonDismisses(t *testing.T) {
 		t.Fatal("clicking [ Close ] did not dismiss the viewer")
 	}
 	g.HandleMouse(tcell.NewEventMouse(r.X+1, r.Y, tcell.ButtonNone, tcell.ModNone))
-	if g.viewer.dismiss.Held() {
-		t.Error("the dismiss latch survived the release")
+	if _, held := g.viewer.gesture.Owner(); held {
+		t.Error("the Close gesture survived the release")
 	}
 }
 
@@ -94,23 +94,23 @@ func TestDataGridViewerCloseSwallowsRestOfGesture(t *testing.T) {
 
 	// After the release the grid takes clicks normally again.
 	g.HandleMouse(tcell.NewEventMouse(6, 4, tcell.ButtonNone, tcell.ModNone))
-	if g.viewer.dismiss.Held() {
-		t.Fatal("the dismiss latch survived the release")
+	if _, held := g.viewer.gesture.Owner(); held {
+		t.Fatal("the Close gesture survived the release")
 	}
 }
 
-// A latch must not survive into the next showing of the same widget: the
+// A gesture must not survive into the next showing of the same widget: the
 // button closes on the press, so the matching release is never routed back
 // to a popup that no longer exists.
-func TestDataGridViewerReopenClearsDismissLatch(t *testing.T) {
+func TestDataGridViewerReopenReleasesCloseGesture(t *testing.T) {
 	g := openDrawnViewer(t)
 	r := g.viewer.closeRect
 	g.HandleMouse(tcell.NewEventMouse(r.X+1, r.Y, tcell.Button1, tcell.ModNone))
 
 	// Reopened without the release ever arriving.
 	g.openViewer()
-	if g.viewer.dismiss.Held() {
-		t.Fatal("reopening the viewer kept the previous dismissal latched")
+	if _, held := g.viewer.gesture.Owner(); held {
+		t.Fatal("reopening the viewer kept the previous closing gesture held")
 	}
 	g.DrawOverlay(tuikittest.NewScreen(100, 30))
 	g.HandleMouse(tcell.NewEventMouse(g.viewer.closeRect.X+1, g.viewer.closeRect.Y, tcell.Button1, tcell.ModNone))

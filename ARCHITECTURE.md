@@ -157,8 +157,9 @@ Two consequences:
 A widget with several drag zones is a router too. `DataGrid` (cells, row
 header, Ctrl+mark, both scrollbars, column separator, inert header/status),
 `Editor` (text, both scrollbars, completion item and scrollbar), `TreeView`
-(an acted-on row or title button, both scrollbars) and `propsheet.Form` (a
-row's index, its scrollbar) each hold one `core.Gesture` over their own zone
+(an acted-on row or title button, both scrollbars), `propsheet.Form` (a
+row's index, its scrollbar) and `ValueViewer` (text, Close, inert border and
+hint) each hold one `core.Gesture` over their own zone
 type. Zones are hit-tested only on the fresh press; every later `Button1`
 goes to the owner, routed ahead of the bounds test, and a release anywhere
 ends it. One latch per zone, each branch testing only some of the others,
