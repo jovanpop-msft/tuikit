@@ -51,7 +51,7 @@ func TestHandleScrollbarDrag(t *testing.T) {
 	// A Button1 press elsewhere in the widget (not on the bar's column)
 	// must not start a drag.
 	miss := tcell.NewEventMouse(5, 5, tcell.Button1, tcell.ModNone)
-	if HandleScrollbarDrag(miss, 10, 0, 8, 100, &dragging, &scroll) {
+	if HandleScrollbarDrag(miss, 10, 0, 8, 100, true, &dragging, &scroll) {
 		t.Fatal("press off the bar's column should not be handled")
 	}
 	if dragging {
@@ -61,7 +61,7 @@ func TestHandleScrollbarDrag(t *testing.T) {
 	// A press on the bar's column, within the track's row range, jumps and
 	// latches dragging.
 	press := tcell.NewEventMouse(10, 4, tcell.Button1, tcell.ModNone)
-	if !HandleScrollbarDrag(press, 10, 0, 8, 100, &dragging, &scroll) {
+	if !HandleScrollbarDrag(press, 10, 0, 8, 100, true, &dragging, &scroll) {
 		t.Fatal("press on the bar should be handled")
 	}
 	if !dragging {
@@ -74,20 +74,20 @@ func TestHandleScrollbarDrag(t *testing.T) {
 	// Once dragging, a Button1 event with x drifted off the bar's column
 	// still keeps controlling scroll.
 	drift := tcell.NewEventMouse(2, 7, tcell.Button1, tcell.ModNone)
-	if !HandleScrollbarDrag(drift, 10, 0, 8, 100, &dragging, &scroll) {
+	if !HandleScrollbarDrag(drift, 10, 0, 8, 100, false, &dragging, &scroll) {
 		t.Fatal("a continued drag with x off-column should still be handled")
 	}
 
 	// Wheel/other buttons never start or continue a drag.
 	dragging = false
 	wheel := tcell.NewEventMouse(10, 4, tcell.WheelDown, tcell.ModNone)
-	if HandleScrollbarDrag(wheel, 10, 0, 8, 100, &dragging, &scroll) {
+	if HandleScrollbarDrag(wheel, 10, 0, 8, 100, true, &dragging, &scroll) {
 		t.Fatal("a wheel event must never be treated as a scrollbar drag")
 	}
 
 	// Content that fits entirely (total <= visible) never engages.
 	dragging = false
-	if HandleScrollbarDrag(press, 10, 0, 8, 8, &dragging, &scroll) {
+	if HandleScrollbarDrag(press, 10, 0, 8, 8, true, &dragging, &scroll) {
 		t.Fatal("no scrollbar is shown when total <= visible, so it must not engage")
 	}
 }
@@ -97,12 +97,12 @@ func TestHandleScrollbarDragH(t *testing.T) {
 	var scroll int
 
 	miss := tcell.NewEventMouse(5, 5, tcell.Button1, tcell.ModNone)
-	if HandleScrollbarDragH(miss, 0, 20, 8, 100, &dragging, &scroll) {
+	if HandleScrollbarDragH(miss, 0, 20, 8, 100, true, &dragging, &scroll) {
 		t.Fatal("press off the bar's row should not be handled")
 	}
 
 	press := tcell.NewEventMouse(4, 20, tcell.Button1, tcell.ModNone)
-	if !HandleScrollbarDragH(press, 0, 20, 8, 100, &dragging, &scroll) {
+	if !HandleScrollbarDragH(press, 0, 20, 8, 100, true, &dragging, &scroll) {
 		t.Fatal("press on the horizontal bar should be handled")
 	}
 	if !dragging {
@@ -112,8 +112,32 @@ func TestHandleScrollbarDragH(t *testing.T) {
 	// Once dragging, y drifted off the bar's row still keeps controlling
 	// scroll.
 	drift := tcell.NewEventMouse(7, 2, tcell.Button1, tcell.ModNone)
-	if !HandleScrollbarDragH(drift, 0, 20, 8, 100, &dragging, &scroll) {
+	if !HandleScrollbarDragH(drift, 0, 20, 8, 100, false, &dragging, &scroll) {
 		t.Fatal("a continued drag with y off-row should still be handled")
+	}
+}
+
+// A held press resends Button1 on every motion: a resend landing on the bar
+// (a row press dragged onto the bar's column) must not start a drag, while a
+// drag started by a fresh press keeps going on resends off the bar.
+func TestHandleScrollbarDragNeedsFreshPress(t *testing.T) {
+	var dragging bool
+	scroll := 3
+	onBar := tcell.NewEventMouse(10, 7, tcell.Button1, tcell.ModNone)
+	if HandleScrollbarDrag(onBar, 10, 0, 8, 100, false, &dragging, &scroll) || dragging || scroll != 3 {
+		t.Fatalf("resend on the bar: dragging=%v scroll=%d, want false 3", dragging, scroll)
+	}
+	onHBar := tcell.NewEventMouse(7, 20, tcell.Button1, tcell.ModNone)
+	if HandleScrollbarDragH(onHBar, 0, 20, 8, 100, false, &dragging, &scroll) || dragging || scroll != 3 {
+		t.Fatalf("resend on the H bar: dragging=%v scroll=%d, want false 3", dragging, scroll)
+	}
+
+	if !HandleScrollbarDrag(tcell.NewEventMouse(10, 0, tcell.Button1, tcell.ModNone), 10, 0, 8, 100, true, &dragging, &scroll) || !dragging {
+		t.Fatal("fresh press on the bar did not start a drag")
+	}
+	off := tcell.NewEventMouse(2, 7, tcell.Button1, tcell.ModNone)
+	if !HandleScrollbarDrag(off, 10, 0, 8, 100, false, &dragging, &scroll) || scroll != 92 {
+		t.Fatalf("resend off the bar mid-drag: scroll=%d, want 92", scroll)
 	}
 }
 

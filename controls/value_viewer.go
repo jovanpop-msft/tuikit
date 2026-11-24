@@ -31,11 +31,24 @@ type ValueViewer struct {
 	// hit-tested by HandleMouse.
 	closeRect core.Rect
 
-	// dismiss latches from the press on Close to its release: the press closes
-	// the popup, and tcell's Button1 resends while held would otherwise land on
+	// gesture records which zone took the held Button1 press, hit-tested on
+	// the fresh press only. tcell resends Button1 on every motion while held,
+	// so testing Close on each event read a selection drag that crossed it as
+	// a click and closed the popup mid-selection. A press on Close closes the
+	// popup and stays armed to its release, so the resends don't land on
 	// whatever is underneath as fresh clicks.
-	dismiss core.PressLatch
+	gesture core.Gesture[viewerZone]
 }
+
+// viewerZone is a ValueViewer press zone: the text (its Editor), the Close
+// button, or the rest of the popup (border, hint), which takes no action.
+type viewerZone int
+
+const (
+	viewerInert viewerZone = iota
+	viewerText
+	viewerClose
+)
 
 // Show opens the popup on text, titled title, with the caret at the start.
 func (v *ValueViewer) Show(title, text string) {
@@ -49,9 +62,10 @@ func (v *ValueViewer) Show(title, text string) {
 	v.editor.SetText(text)
 	v.editor.Focus(true)
 	v.open = true
-	// A latch must not survive into the next showing; see dismiss, and
+	// A gesture must not survive into the next showing (a press-closed one
+	// whose release never arrived would swallow the first click); see
 	// dialogs.ModalDialog.Show, which clears its own for the same reason.
-	v.dismiss.Clear()
+	v.gesture.Release()
 }
 
 // Close hides the popup. A host whose content the popup was showing calls it
@@ -131,23 +145,55 @@ func (v *ValueViewer) HandleKey(ev *tcell.EventKey) bool {
 }
 
 // HandleMouse takes every mouse event while the popup is showing, and the rest
-// of the gesture whose press closed it (see dismiss). A click outside the
-// Editor and Close is swallowed and the popup stays open. It returns false
-// otherwise.
+// of the gesture whose press closed it (see gesture). A click outside the
+// Editor and Close is swallowed and the popup stays open; only a fresh press
+// on Close closes it, never a drag that started elsewhere and crosses it. It
+// returns false otherwise.
 func (v *ValueViewer) HandleMouse(ev *tcell.EventMouse) bool {
-	if v.dismiss.Held() {
-		v.dismiss.Release(ev)
+	if ev.Buttons() == tcell.ButtonNone {
+		zone, held := v.gesture.Owner()
+		v.gesture.Release()
+		wasClose := held && zone == viewerClose
+		// The Editor holds its own gesture for a selection drag, which must
+		// end wherever the release lands.
+		if v.editor != nil {
+			v.editor.HandleMouse(ev)
+		}
+		return v.open || wasClose
+	}
+	if v.gesture.Route(ev, v.routeDrag) {
 		return true
 	}
 	if !v.open {
 		return false
 	}
-	if px, py := ev.Position(); v.closeRect.Contains(px, py) && v.dismiss.Fresh(ev) {
-		v.Close()
+	if ev.Buttons() == tcell.Button1 {
+		px, py := ev.Position()
+		switch {
+		case v.closeRect.Contains(px, py):
+			v.Close()
+			v.gesture.Arm(ev, viewerClose)
+		case v.editor.Bounds().Contains(px, py):
+			v.gesture.Arm(ev, viewerText)
+			v.editor.HandleMouse(ev)
+		default:
+			// The border or hint: a press there that drifts onto Close must
+			// not close the popup either.
+			v.gesture.Arm(ev, viewerInert)
+		}
 		return true
 	}
 	v.editor.HandleMouse(ev)
 	return true
+}
+
+// routeDrag delivers a held Button1 to the zone its press claimed: the Editor
+// extends its selection (it routes off-rect motion itself and clamps), and
+// Close and the inert zones swallow it.
+func (v *ValueViewer) routeDrag(ev *tcell.EventMouse, z viewerZone) {
+	if z == viewerText && v.open {
+		v.editor.HandleMouse(ev)
+	}
 }
 
 // HasSelection and the SelectedText, Cut, Paste and SelectAll beside it make

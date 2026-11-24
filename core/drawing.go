@@ -399,8 +399,14 @@ func DrawScrollbarH(s tcell.Screen, x, y, w, total, visible, offset int, style, 
 // as both track length and visible count (every caller passes the same); a caller
 // with a different visible count needs its own drag math.
 //
-// *dragging latches for the whole gesture: set on the qualifying initial press,
-// so every call while the button stays down controls *scroll even once the mouse
+// fresh is the caller's verdict that ev is the first Button1 of its gesture
+// (PressLatch.Fresh, or !Held() before the claim), not a resend of a held press:
+// with all-motion tracking a held press resends Button1 on every motion, and
+// only a fresh press on the bar may start a drag. A press on a row, held and
+// dragged onto the bar's column, once grabbed the thumb and jumped the offset.
+//
+// *dragging latches for the whole gesture: set on a fresh press on the bar, so
+// every call while the button stays down controls *scroll even once the mouse
 // drifts off the bar's column. The caller clears it on release (with its other
 // latches, e.g. ListBox's press latch, or ModalDialog.ConsumeOutsideClick).
 // Returns false, writing nothing, for anything but a qualifying Button1 event,
@@ -409,27 +415,27 @@ func DrawScrollbarH(s tcell.Screen, x, y, w, total, visible, offset int, style, 
 // A widget whose drags are owned by a Gesture has no bool to pass: it tests a
 // fresh press with OnScrollbar and, on that press and every routed repeat, sets
 // the offset from ScrollOffsetForDrag.
-func HandleScrollbarDrag(ev *tcell.EventMouse, x, y, h, total int, dragging *bool, scroll *int) bool {
+func HandleScrollbarDrag(ev *tcell.EventMouse, x, y, h, total int, fresh bool, dragging *bool, scroll *int) bool {
 	mx, my := ev.Position()
-	return handleScrollbarDragAxis(ev, h, total, OnScrollbar(mx, my, x, y, h, total), my-y, dragging, scroll)
+	return handleScrollbarDragAxis(ev, h, total, fresh && OnScrollbar(mx, my, x, y, h, total), my-y, dragging, scroll)
 }
 
 // HandleScrollbarDragH is HandleScrollbarDrag's horizontal counterpart, for a
 // bar drawn by DrawScrollbarH at row y spanning [x, x+w). The same
-// h/visible-conflation caveat applies to w.
-func HandleScrollbarDragH(ev *tcell.EventMouse, x, y, w, total int, dragging *bool, scroll *int) bool {
+// h/visible-conflation caveat applies to w, and the same fresh rule.
+func HandleScrollbarDragH(ev *tcell.EventMouse, x, y, w, total int, fresh bool, dragging *bool, scroll *int) bool {
 	mx, my := ev.Position()
-	return handleScrollbarDragAxis(ev, w, total, OnScrollbarH(mx, my, x, y, w, total), mx-x, dragging, scroll)
+	return handleScrollbarDragAxis(ev, w, total, fresh && OnScrollbarH(mx, my, x, y, w, total), mx-x, dragging, scroll)
 }
 
 // handleScrollbarDragAxis is the axis-free core of HandleScrollbarDrag and
-// HandleScrollbarDragH: length is the bar's track (and visible count), onBar
-// whether the mouse is on the bar, along the mouse's offset into the track.
-func handleScrollbarDragAxis(ev *tcell.EventMouse, length, total int, onBar bool, along int, dragging *bool, scroll *int) bool {
+// HandleScrollbarDragH: length is the bar's track (and visible count), start
+// whether ev may start a drag (a fresh press on the bar), along the mouse's offset into the track.
+func handleScrollbarDragAxis(ev *tcell.EventMouse, length, total int, start bool, along int, dragging *bool, scroll *int) bool {
 	if ev.Buttons() != tcell.Button1 {
 		return false
 	}
-	if total <= length || length <= 0 || (!*dragging && !onBar) {
+	if total <= length || length <= 0 || (!*dragging && !start) {
 		return false
 	}
 	*dragging = true

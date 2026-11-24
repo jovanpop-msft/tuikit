@@ -202,9 +202,10 @@ func (l *ListBox) HandleMouse(ev *tcell.EventMouse) bool {
 	// first would otherwise be read as a click on whatever item sits in
 	// that screen column. It runs ahead of the bounds check: a latched thumb
 	// drag keeps control once the mouse leaves the list, so a fast drag past
-	// the bottom still reaches the end. Only a press on the bar starts one: an item
-	// drag (press latch held) wandering onto the bar column once grabbed the thumb.
-	if (l.sbDragging || !l.press.Held()) && core.HandleScrollbarDrag(ev, l.rect.Right()-1, l.rect.Y, l.rect.H, len(l.items), &l.sbDragging, &l.scroll) {
+	// the bottom still reaches the end. Only a fresh press on the bar starts one
+	// (the press latch not yet held): an item drag wandering onto the bar column
+	// once grabbed the thumb.
+	if core.HandleScrollbarDrag(ev, l.rect.Right()-1, l.rect.Y, l.rect.H, len(l.items), !l.press.Held(), &l.sbDragging, &l.scroll) {
 		return true
 	}
 	if !l.rect.Contains(mx, my) {

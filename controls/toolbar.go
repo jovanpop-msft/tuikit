@@ -73,6 +73,9 @@ type Toolbar struct {
 	// resends Button1 on every motion event while the button stays down, so a click
 	// that twitches before release fires Action again, flickering a toggle button
 	// (e.g. Include Actual Execution Plan) instead of flipping it once.
+	// HandleMouse claims it on every Button1, not only on a hit (as
+	// layout.Splitter): a press on a divider, a gap or outside the rect that is
+	// dragged onto a button would otherwise arrive fresh there and fire it.
 	press core.PressLatch
 }
 
@@ -268,6 +271,7 @@ func (tb *Toolbar) Bounds() core.Rect { return tb.rect }
 func (tb *Toolbar) HandleMouse(ev *tcell.EventMouse) bool {
 	held := tb.press.Held()
 	released := tb.press.Release(ev)
+	fresh := tb.press.Fresh(ev)
 	mx, my := ev.Position()
 	if !tb.rect.Contains(mx, my) {
 		tb.hover = -1
@@ -279,7 +283,7 @@ func (tb *Toolbar) HandleMouse(ev *tcell.EventMouse) bool {
 		// Hover is tracked but not claimed (core.MouseHandler).
 		return held
 	}
-	if idx >= 0 && tb.press.Fresh(ev) {
+	if idx >= 0 && fresh {
 		if b := tb.buttons[idx]; b.Action != nil && b.enabled() {
 			b.Action()
 		}

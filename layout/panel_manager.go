@@ -507,7 +507,7 @@ func (pm *PanelManager) HandleMouse(ev *tcell.EventMouse) bool {
 	foreign := ev.Buttons() == tcell.Button1 && wasHeld && !pm.press.Held() &&
 		!pm.comboSbDragging
 
-	if pm.mouseComboScrollbar(ev) {
+	if pm.mouseComboScrollbar(ev, !wasHeld) {
 		return true
 	}
 	if foreign {
@@ -558,14 +558,16 @@ func (pm *PanelManager) mouseRelease(ev *tcell.EventMouse) bool {
 // mouseComboScrollbar handles the drop-down's scrollbar. It goes ahead of the
 // bounds check (a latched drag owns the mouse until release) and of the list
 // hit-test (the bar occupies the list's last column). Writes nothing and
-// returns false when the combo is closed or no bar is needed.
-func (pm *PanelManager) mouseComboScrollbar(ev *tcell.EventMouse) bool {
+// returns false when the combo is closed or no bar is needed. fresh is whether
+// Button1 was up before ev: a press that began elsewhere (a panel's drag, the
+// tab row) and wanders onto the bar does not grab it.
+func (pm *PanelManager) mouseComboScrollbar(ev *tcell.EventMouse, fresh bool) bool {
 	if !pm.comboOpen {
 		return false
 	}
 	listX, listW, listH := pm.comboGeom()
 	return core.HandleScrollbarDrag(ev, listX+listW-1, pm.contentY(), listH,
-		len(pm.panels), &pm.comboSbDragging, &pm.comboScroll)
+		len(pm.panels), fresh, &pm.comboSbDragging, &pm.comboScroll)
 }
 
 // mouseForeign routes a drag whose press a panel took. The panel that took the
