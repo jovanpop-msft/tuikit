@@ -168,10 +168,12 @@ header. A press that acted or did nothing still arms a zone whose route does
 nothing, so a drag from it never reaches a cell as a fresh press. Scrollbars
 use `core.OnScrollbar`/`OnScrollbarH` for the press and
 `ScrollOffsetForDrag` for every event; `HandleScrollbarDrag` stays for
-widgets with a single bool latch. A view onto a canvas scrolled in both axes
-uses `core.Viewport`, whose `HandleScrollbars` latches one bar on the press
-and gives it every later `Button1` until `Release`, so a drag crossing the
-other bar stays on its own.
+widgets with a single bool latch, which pass it their fresh-press verdict
+(`PressLatch`, `ModalDialog`'s `TrackPress`): only a fresh press on the bar
+starts a drag, so a row press dragged onto the bar column never grabs it. A
+view onto a canvas scrolled in both axes uses `core.Viewport`, whose
+`HandleScrollbars` latches one bar on a fresh press and gives it every later
+`Button1` until `Release`, so a drag crossing the other bar stays on its own.
 
 A selection drag (DataGrid cells and row header, Editor text, both wrap
 modes) that leaves the content clamps the pointer to the row or column just

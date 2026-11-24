@@ -363,9 +363,9 @@ func (d *DropDown) HandleMouse(ev *tcell.EventMouse) bool {
 	if ev.Buttons() != tcell.Button1 {
 		return false
 	}
-	if d.open && d.scrolled() && (d.sbDragging || !d.press.Held()) {
+	if d.open && d.scrolled() {
 		top := d.firstShown()
-		if core.HandleScrollbarDrag(ev, ix+d.rect.W, y0, rows, len(d.items), &d.sbDragging, &top) {
+		if core.HandleScrollbarDrag(ev, ix+d.rect.W, y0, rows, len(d.items), !d.press.Held(), &d.sbDragging, &top) {
 			d.press.Fresh(ev) // claim it, so the header and list ignore its resends
 			d.top = top
 			return true

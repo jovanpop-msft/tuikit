@@ -110,27 +110,27 @@ func viewportPress(x, y int) *tcell.EventMouse { return tcell.NewEventMouse(x, y
 
 func TestViewportScrollbarDrag(t *testing.T) {
 	v := newTestViewport(false)
-	if v.HandleScrollbars(viewportPress(5, 3)) {
+	if v.HandleScrollbars(viewportPress(5, 3), true) {
 		t.Fatal("a press in the view was taken by the bars")
 	}
-	if v.HandleScrollbars(tcell.NewEventMouse(12, 5, tcell.Button3, 0)) {
+	if v.HandleScrollbars(tcell.NewEventMouse(12, 5, tcell.Button3, 0), true) {
 		t.Fatal("a right press on the bar was taken")
 	}
 	// Last row of the vertical track: the last offset.
-	if !v.HandleScrollbars(viewportPress(12, 5)) || v.Y != 15 || !v.Dragging() {
+	if !v.HandleScrollbars(viewportPress(12, 5), true) || v.Y != 15 || !v.Dragging() {
 		t.Fatalf("press on VBar end -> Y=%d dragging=%v, want 15 true", v.Y, v.Dragging())
 	}
 	// The latch holds off the bar, and a drag crossing the HBar stays vertical.
-	if !v.HandleScrollbars(viewportPress(4, 6)) || v.Y != 15 || v.X != 0 {
+	if !v.HandleScrollbars(viewportPress(4, 6), false) || v.Y != 15 || v.X != 0 {
 		t.Fatalf("drag onto HBar -> X=%d Y=%d, want 0,15", v.X, v.Y)
 	}
-	if !v.HandleScrollbars(viewportPress(30, 1)) || v.Y != 0 {
+	if !v.HandleScrollbars(viewportPress(30, 1), false) || v.Y != 0 {
 		t.Fatalf("drag above the track -> Y=%d, want 0", v.Y)
 	}
 	if !v.Release() || v.Dragging() || v.Release() {
 		t.Fatal("Release did not clear the latch exactly once")
 	}
-	if !v.HandleScrollbars(viewportPress(11, 6)) || v.X != 30 {
+	if !v.HandleScrollbars(viewportPress(11, 6), true) || v.X != 30 {
 		t.Fatalf("press on HBar end -> X=%d, want 30", v.X)
 	}
 	v.Release()
@@ -138,19 +138,44 @@ func TestViewportScrollbarDrag(t *testing.T) {
 	// Inside: a bar on a fitting axis is not drawn, so its press falls through.
 	in := newTestViewport(true)
 	in.ContentH = 4
-	if in.HandleScrollbars(viewportPress(11, 2)) {
+	if in.HandleScrollbars(viewportPress(11, 2), true) {
 		t.Error("press on an undrawn inside VBar was taken")
 	}
 	// The corner cell is the vertical bar's (the HBar stops short of it), and
 	// its end is the last offset with the bar's line out of the extent.
 	in.ContentH = 20
-	if !in.HandleScrollbars(viewportPress(11, 5)) || in.X != 0 || in.Y != 16 {
+	if !in.HandleScrollbars(viewportPress(11, 5), true) || in.X != 0 || in.Y != 16 {
 		t.Errorf("press on the inside corner -> X=%d Y=%d, want 0,16", in.X, in.Y)
 	}
 	in.Release()
 	// The HBar's last cell (one short of the corner) is the last X offset.
-	if !in.HandleScrollbars(viewportPress(10, 5)) || in.X != 31 {
+	if !in.HandleScrollbars(viewportPress(10, 5), true) || in.X != 31 {
 		t.Errorf("press on the inside HBar end -> X=%d, want 31", in.X)
+	}
+}
+
+// A press that began elsewhere, held and dragged onto either bar, latches
+// neither; a latched bar keeps every resend, wherever it lands.
+func TestViewportScrollbarNeedsFreshPress(t *testing.T) {
+	v := newTestViewport(false)
+	if v.HandleScrollbars(viewportPress(12, 5), false) || v.Dragging() || v.Y != 0 {
+		t.Fatalf("resend on VBar: Y=%d dragging=%v, want 0 false", v.Y, v.Dragging())
+	}
+	if v.HandleScrollbars(viewportPress(11, 6), false) || v.Dragging() || v.X != 0 {
+		t.Fatalf("resend on HBar: X=%d dragging=%v, want 0 false", v.X, v.Dragging())
+	}
+	if !v.HandleScrollbars(viewportPress(12, 1), true) || !v.Dragging() {
+		t.Fatal("fresh press on VBar did not latch")
+	}
+	if !v.HandleScrollbars(viewportPress(3, 5), false) || v.Y != 15 {
+		t.Fatalf("resend off the bar mid-drag: Y=%d, want 15", v.Y)
+	}
+	v.Release()
+	if !v.HandleScrollbars(viewportPress(2, 6), true) || !v.Dragging() {
+		t.Fatal("fresh press on HBar did not latch")
+	}
+	if !v.HandleScrollbars(viewportPress(30, 1), false) || v.X != 30 || v.Y != 15 {
+		t.Fatalf("resend off the H bar mid-drag: X=%d Y=%d, want 30 15", v.X, v.Y)
 	}
 }
 

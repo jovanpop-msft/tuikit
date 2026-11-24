@@ -120,11 +120,17 @@ func TestModalDialogScrollbarDrag(t *testing.T) {
 	var scroll int
 
 	miss := tcell.NewEventMouse(d.Rect().X+2, trackY, tcell.Button1, tcell.ModNone)
+	d.TrackPress(miss)
 	if d.ScrollbarDrag(miss, trackX, trackY, trackH, total, &scroll) {
 		t.Fatal("press off the bar's column should not be handled")
 	}
 
+	// ScrollbarDrag reads TrackPress's fresh verdict, which an embedding dialog
+	// gets from ConsumeOutsideClick: the miss's press must be released first, or
+	// this one is its held resend and may not start a drag.
+	d.ConsumeOutsideClick(tcell.NewEventMouse(0, 0, tcell.ButtonNone, tcell.ModNone))
 	press := tcell.NewEventMouse(trackX, trackY+trackH-1, tcell.Button1, tcell.ModNone)
+	d.TrackPress(press)
 	if !d.ScrollbarDrag(press, trackX, trackY, trackH, total, &scroll) {
 		t.Fatal("press on the bar should be handled")
 	}

@@ -186,8 +186,13 @@ func (d *ModalDialog) TrackPress(ev *tcell.EventMouse) {
 // *scroll for a Button1 press on the bar or any continuation of a started drag
 // regardless of x. Call it before the dialog's row hit-testing: the bar can sit
 // over a column that would resolve to a content row.
+//
+// Only a fresh press starts a drag, so a row press dragged onto the bar never
+// grabs the thumb. That verdict is TrackPress's: call ScrollbarDrag after
+// ConsumeOutsideClick or ButtonClicked (or TrackPress itself) for ev, as every
+// embedding dialog does.
 func (d *ModalDialog) ScrollbarDrag(ev *tcell.EventMouse, trackX, trackY, trackH, total int, scroll *int) bool {
-	return core.HandleScrollbarDrag(ev, trackX, trackY, trackH, total, &d.sbDragging, scroll)
+	return core.HandleScrollbarDrag(ev, trackX, trackY, trackH, total, d.fresh, &d.sbDragging, scroll)
 }
 
 // DrawBase fades the underlying UI and draws the dialog box. Embedding types

@@ -215,9 +215,12 @@ func (v *Viewport) DrawScrollbars(s tcell.Screen, track, thumb tcell.Style) {
 	}
 }
 
-// HandleScrollbars handles a Button1 press or drag on either bar: a press on
-// a drawn bar latches it and jumps the offset to the pointer, and every
-// Button1 after it, until Release, drags that bar wherever the pointer is.
+// HandleScrollbars handles a Button1 press or drag on either bar: a fresh
+// press on a drawn bar latches it and jumps the offset to the pointer, and
+// every Button1 after it, until Release, drags that bar wherever the pointer
+// is. fresh is the caller's verdict that ev is the first Button1 of its
+// gesture, not a resend of a held press (see HandleScrollbarDrag): a press
+// that began elsewhere, held and dragged onto a bar, does not latch it.
 // Reports whether the event was the bars'; anything else (another button, a
 // press off the bars) returns false with nothing changed, so a host can chain
 // it before its own hit-testing. A press on a drawn bar is the bar's even when
@@ -226,13 +229,15 @@ func (v *Viewport) DrawScrollbars(s tcell.Screen, track, thumb tcell.Style) {
 //
 // A latched bar alone takes the drag: a vertical drag crossing the horizontal
 // bar stays vertical.
-func (v *Viewport) HandleScrollbars(ev *tcell.EventMouse) bool {
+func (v *Viewport) HandleScrollbars(ev *tcell.EventMouse, fresh bool) bool {
 	if ev.Buttons() != tcell.Button1 {
 		return false
 	}
 	mx, my := ev.Position()
 	if !v.vDrag && !v.hDrag {
 		switch {
+		case !fresh:
+			return false
 		case v.showsH() && v.HBar().Contains(mx, my):
 			v.hDrag = true
 		case v.showsV() && v.VBar().Contains(mx, my):
