@@ -84,11 +84,15 @@ func TestViewportBarsPlacementAndDraw(t *testing.T) {
 	if got := in.VBar(); got != (Rect{X: 11, Y: 1, W: 1, H: 5}) {
 		t.Errorf("inside VBar = %+v", got)
 	}
-	if got := in.HBar(); got != (Rect{X: 2, Y: 5, W: 10, H: 1}) {
+	// Both drawn: the HBar stops short of the corner, which is the VBar's.
+	if got := in.HBar(); got != (Rect{X: 2, Y: 5, W: 9, H: 1}) {
 		t.Errorf("inside HBar = %+v", got)
 	}
-	// Inside, only the overflowing axis is drawn.
-	in.ContentH = 5
+	// Inside, only the overflowing axis is drawn, and a lone HBar spans View.
+	in.ContentH = 4
+	if got := in.HBar(); got != (Rect{X: 2, Y: 5, W: 10, H: 1}) {
+		t.Errorf("lone inside HBar = %+v", got)
+	}
 	b.Fill('x', tcell.StyleDefault)
 	in.DrawScrollbars(b, track, thumb)
 	if b.RuneAt(11, 1) != 'x' {
@@ -133,14 +137,86 @@ func TestViewportScrollbarDrag(t *testing.T) {
 
 	// Inside: a bar on a fitting axis is not drawn, so its press falls through.
 	in := newTestViewport(true)
-	in.ContentH = 5
+	in.ContentH = 4
 	if in.HandleScrollbars(viewportPress(11, 2)) {
 		t.Error("press on an undrawn inside VBar was taken")
 	}
-	// The cell both inside bars cover goes to the horizontal one.
+	// The corner cell is the vertical bar's (the HBar stops short of it), and
+	// its end is the last offset with the bar's line out of the extent.
 	in.ContentH = 20
-	if !in.HandleScrollbars(viewportPress(11, 5)) || in.X != 30 || in.Y != 0 {
-		t.Errorf("press on the inside corner -> X=%d Y=%d, want 30,0", in.X, in.Y)
+	if !in.HandleScrollbars(viewportPress(11, 5)) || in.X != 0 || in.Y != 16 {
+		t.Errorf("press on the inside corner -> X=%d Y=%d, want 0,16", in.X, in.Y)
+	}
+	in.Release()
+	// The HBar's last cell (one short of the corner) is the last X offset.
+	if !in.HandleScrollbars(viewportPress(10, 5)) || in.X != 31 {
+		t.Errorf("press on the inside HBar end -> X=%d, want 31", in.X)
+	}
+}
+
+// Inside bars take their line out of the scrollable extent, so the canvas's
+// last row and column can be scrolled out from under them (they sat under the
+// bars at the largest offset, hiding the plan graph's edge tiles).
+func TestViewportInsideBarsReachLastCell(t *testing.T) {
+	v := &Viewport{View: Rect{W: 10, H: 5}, ContentW: 40, ContentH: 20, BarsInside: true}
+	if w, h := v.Visible(); w != 9 || h != 4 {
+		t.Fatalf("Visible = %d,%d, want 9,4", w, h)
+	}
+	v.ScrollTo(1<<30, 1<<30)
+	if v.X != 31 || v.Y != 16 {
+		t.Fatalf("largest offset = %d,%d, want 31,16", v.X, v.Y)
+	}
+	if _, cy := v.ToCanvas(v.HBar().X, v.HBar().Y-1); cy != v.ContentH-1 {
+		t.Errorf("row above the HBar = canvas %d, want %d", cy, v.ContentH-1)
+	}
+	if cx, _ := v.ToCanvas(v.VBar().X-1, v.VBar().Y); cx != v.ContentW-1 {
+		t.Errorf("column left of the VBar = canvas %d, want %d", cx, v.ContentW-1)
+	}
+
+	// EnsureVisible on the bottom-right cell clears both bars.
+	v.ScrollTo(0, 0)
+	v.EnsureVisible(Rect{X: 39, Y: 19, W: 1, H: 1})
+	if v.X != 31 || v.Y != 16 {
+		t.Errorf("EnsureVisible(last cell) -> %d,%d, want 31,16", v.X, v.Y)
+	}
+
+	// A page is the visible height less one: 3 rows, not 4.
+	v.ScrollTo(0, 0)
+	if _, moved := v.ScrollKey(tcell.NewEventKey(tcell.KeyPgDn, "", 0), 1); !moved || v.Y != 3 {
+		t.Errorf("PgDn inside -> Y=%d, want 3", v.Y)
+	}
+
+	// Outside is unchanged: Visible is View.
+	out := &Viewport{View: Rect{W: 10, H: 5}, ContentW: 40, ContentH: 20}
+	if w, h := out.Visible(); w != 10 || h != 5 || out.MaxX() != 30 || out.MaxY() != 15 {
+		t.Errorf("outside Visible %d,%d Max %d,%d, want 10,5 30,15", w, h, out.MaxX(), out.MaxY())
+	}
+}
+
+func TestViewportInsideBarsFixedPoint(t *testing.T) {
+	tests := []struct {
+		name       string
+		cw, ch     int
+		vb, hb     bool
+		maxX, maxY int
+	}{
+		{"fits", 10, 5, false, false, 0, 0},
+		// Exactly View.W wide, overflowing vertically: the VBar covers the
+		// last column, which then needs a horizontal scroll (and its bar).
+		{"exactly wide, tall", 10, 20, true, true, 1, 16},
+		{"exactly tall, wide", 40, 5, true, true, 31, 1},
+		// One short of View on the other axis: the second bar never appears.
+		{"one narrower, tall", 9, 20, true, false, 0, 15},
+		{"one shorter, wide", 40, 4, false, true, 30, 0},
+	}
+	for _, tt := range tests {
+		v := &Viewport{View: Rect{W: 10, H: 5}, ContentW: tt.cw, ContentH: tt.ch, BarsInside: true}
+		if vb, hb := v.showsV(), v.showsH(); vb != tt.vb || hb != tt.hb {
+			t.Errorf("%s: shows V,H = %v,%v, want %v,%v", tt.name, vb, hb, tt.vb, tt.hb)
+		}
+		if v.MaxX() != tt.maxX || v.MaxY() != tt.maxY {
+			t.Errorf("%s: Max = %d,%d, want %d,%d", tt.name, v.MaxX(), v.MaxY(), tt.maxX, tt.maxY)
+		}
 	}
 }
 
