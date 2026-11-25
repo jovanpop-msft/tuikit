@@ -1217,3 +1217,37 @@ func TestTreeViewPageKeysMoveOneRowInTinyPane(t *testing.T) {
 		}
 	}
 }
+
+// TestTreeViewEmphasisDrawsCurrentStyle: an Emphasis row is drawn in
+// StyleTreeCurrent (bold, TreeCurrentText) and wins over Dim; selected, it
+// keeps the selection colors and stays bold.
+func TestTreeViewEmphasisDrawsCurrentStyle(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetBounds(0, 0, 40, 10)
+	tv.SetNodes([]TreeNode{
+		{ID: 1, Label: "first"},
+		{ID: 2, Label: "current", Emphasis: true, Dim: true},
+		{ID: 3, Label: "plain"},
+	})
+	s := tuikittest.NewScreen(40, 10)
+	tv.Draw(s)
+	p := theme.Active()
+	styleOf := func(label string) tcell.Style {
+		x, y, ok := s.Find(label)
+		if !ok {
+			t.Fatalf("%q not drawn:\n%s", label, s.Snapshot())
+		}
+		return s.StyleAt(x, y)
+	}
+	if st := styleOf("current"); !st.HasBold() || st.GetForeground() != p.TreeCurrentText {
+		t.Fatal("an Emphasis row is not in StyleTreeCurrent")
+	}
+	if styleOf("plain").HasBold() {
+		t.Fatal("a plain row is bold")
+	}
+	tv.SelectID(2)
+	tv.Draw(s)
+	if st, want := styleOf("current"), theme.StyleSelected(); !st.HasBold() || st.GetForeground() != want.GetForeground() || st.GetBackground() != want.GetBackground() {
+		t.Fatal("a selected Emphasis row lost its bold or the selection colors")
+	}
+}
