@@ -396,3 +396,60 @@ func TestEditorBlockAltDragOverWideRunesMatchesKeyboard(t *testing.T) {
 		t.Fatalf("SelectedText() = %q, want %q", got, want)
 	}
 }
+
+// A block edit that removes a wide glyph straddling the block's left edge leaves
+// that row narrower than the block's column. The cursor corner used to stay at
+// the virtual index past the row's end, so dropping the block (Esc) and typing
+// indexed out of range. Row 1 below is 3 runes, 4 columns; the block covers
+// column [3,4), the right half of 漢, so the whole glyph goes.
+func TestEditorBlockDeleteOfStraddlingGlyphKeepsCursorInRow(t *testing.T) {
+	for _, k := range []struct {
+		name string
+		key  tcell.Key
+		mod  tcell.ModMask
+	}{
+		{"Backspace", tcell.KeyBackspace2, tcell.ModNone},
+		{"Delete", tcell.KeyDelete, tcell.ModNone},
+		{"Ctrl+Backspace", tcell.KeyBackspace2, tcell.ModCtrl},
+		{"Ctrl+Delete", tcell.KeyDelete, tcell.ModCtrl},
+	} {
+		t.Run(k.name, func(t *testing.T) {
+			e := newTestEditor("👍/\n'a漢\n/")
+			e.HandleKey(tuikittest.Key(tcell.KeyDown, tcell.ModNone))
+			e.HandleKey(tuikittest.Key(tcell.KeyEnd, tcell.ModNone))
+			e.HandleKey(tuikittest.Key(tcell.KeyUp, tcell.ModAlt|tcell.ModShift))
+			e.HandleKey(tuikittest.Key(k.key, k.mod))
+
+			if got, want := e.Text(), "👍/\n'a\n/"; got != want {
+				t.Fatalf("Text() after block %s = %q, want %q", k.name, got, want)
+			}
+			if l := len(e.doc.Line(e.cursorRow)); e.cursorCol > l {
+				t.Fatalf("cursor (%d,%d) past its row's end %d", e.cursorRow, e.cursorCol, l)
+			}
+			e.HandleKey(tuikittest.Key(tcell.KeyEscape, tcell.ModNone))
+			e.HandleKey(tuikittest.Rune('x', tcell.ModNone))
+			if got, want := e.Text(), "👍/\n'ax\n/"; got != want {
+				t.Fatalf("Text() after Esc, x = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// Clamping the cursor corner to a short row must not move the block's column:
+// extending it down afterwards continues from the block's column, not from the
+// short row's end, and the anchor's ragged edge keeps that column too.
+func TestEditorBlockExtendAfterShortRowKeepsColumn(t *testing.T) {
+	e := newTestEditor("👍/\n'a漢\n'a漢\nabcdef")
+	blockSelect(e, 0, 2, 2, 3) // display columns [3,4) on rows 0-2
+
+	e.HandleKey(tuikittest.Key(tcell.KeyDelete, tcell.ModNone))
+	e.HandleKey(tuikittest.Key(tcell.KeyDown, tcell.ModAlt|tcell.ModShift))
+
+	if lo, hi := e.blockXBounds(); lo != 3 || hi != 3 {
+		t.Fatalf("block columns after Alt+Shift+Down = [%d,%d), want [3,3)", lo, hi)
+	}
+	e.HandleKey(tuikittest.Rune('X', tcell.ModNone))
+	if got, want := e.Text(), "👍/X\n'a X\n'a X\nabcXdef"; got != want {
+		t.Fatalf("Text() = %q, want %q", got, want)
+	}
+}
