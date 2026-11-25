@@ -39,11 +39,21 @@ type blockCaretState struct {
 // index at x on their own rows, which map back to x unless a wide glyph
 // straddles it; then that corner snaps to the glyph's start, as vertical motion
 // does. x itself is kept in blockCaret, so the block stays zero-width either way.
+//
+// The cursor corner is clamped to its row's end; the anchor is not. On a row
+// narrower than x, RuneIndexAtColumn returns a virtual index past the end, and a
+// cursor left there indexes out of range on the first edit once the block is
+// dropped (Esc, then a typed key panicked). A block Backspace or Delete makes
+// such a row whenever it removes a wide glyph straddling the block's left edge.
+// The anchor may stay virtual (a block's ragged edge, never indexed): it keeps x
+// for when a later Alt+Shift+Arrow invalidates blockCaret and blockXBounds falls
+// back to the corners. The cursor's side of x survives as desiredCol (applyKey).
 func (e *Editor) setBlockCaret(top, bot, x int) {
 	x = max(x, 0)
 	e.selecting, e.selBlock = true, true
 	e.selAnchorRow, e.selAnchorCol = top, core.RuneIndexAtColumn(e.doc.Line(top), x)
-	e.cursorRow, e.cursorCol = bot, core.RuneIndexAtColumn(e.doc.Line(bot), x)
+	bl := e.doc.Line(bot)
+	e.cursorRow, e.cursorCol = bot, min(core.RuneIndexAtColumn(bl, x), len(bl))
 	e.blockCaret = blockCaretState{ok: true, version: e.doc.Version(),
 		ar: top, ac: e.selAnchorCol, cr: bot, cc: e.cursorCol, x: x}
 }

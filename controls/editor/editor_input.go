@@ -224,6 +224,12 @@ func (e *Editor) applyKey(ev *tcell.EventKey) (bound, fired bool) {
 	e.clampCursor()
 	if b.traits&traitGoalColumn == 0 {
 		e.desiredCol = e.cursorDisplayCol()
+		// A block edit's caret column, not the cursor's: setBlockCaret clamps the
+		// cursor to a short row's end, and Alt+Shift+Up/Down must extend the
+		// block from its column, not from there.
+		if x, ok := e.blockCaretX(); ok {
+			e.desiredCol = x
+		}
 	}
 	e.ensureCursorVisible()
 	// A typed character may open the popup from closed only when
