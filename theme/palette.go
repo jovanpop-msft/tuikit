@@ -30,6 +30,11 @@ type Palette struct {
 	// Tree
 	TreeSelected tcell.Color
 	TreeHover    tcell.Color
+	// TreeCurrentText is a tree row marked current (TreeNode.Emphasis), bold on
+	// PanelBg. Its own role, not TextHighlight: in Default, white beside the
+	// 220-gray rows barely stood out, while Light and the mc themes keep their
+	// TextHighlight.
+	TreeCurrentText tcell.Color
 
 	// Menu
 	MenuSelected tcell.Color
@@ -172,6 +177,8 @@ var Default = Palette{
 
 	TreeSelected: tcell.NewRGBColor(0, 122, 204),
 	TreeHover:    tcell.NewRGBColor(62, 62, 64),
+	// Bright yellow: the ChartHeading teal did not stand out enough.
+	TreeCurrentText: tcell.NewRGBColor(255, 255, 0),
 
 	MenuSelected:      tcell.NewRGBColor(0, 122, 204),
 	MenuHover:         tcell.NewRGBColor(62, 62, 64),
@@ -342,8 +349,9 @@ func mcSkin(c mcColors) Palette {
 		TextDisabled:  c.Gray,
 		SelectedText:  c.Black,
 
-		TreeSelected: c.Cyan,
-		TreeHover:    c.PanelShade,
+		TreeSelected:    c.Cyan,
+		TreeHover:       c.PanelShade,
+		TreeCurrentText: c.White,
 
 		MenuSelected:      c.Black,
 		MenuHover:         c.Black,
@@ -441,8 +449,9 @@ var Light = Palette{
 	TextDisabled:  tcell.NewRGBColor(160, 160, 160),
 	SelectedText:  tcell.NewRGBColor(255, 255, 255),
 
-	TreeSelected: tcell.NewRGBColor(0, 122, 204),
-	TreeHover:    tcell.NewRGBColor(220, 230, 244),
+	TreeSelected:    tcell.NewRGBColor(0, 122, 204),
+	TreeHover:       tcell.NewRGBColor(220, 230, 244),
+	TreeCurrentText: tcell.NewRGBColor(0, 0, 0),
 
 	MenuSelected:      tcell.NewRGBColor(0, 122, 204),
 	MenuHover:         tcell.NewRGBColor(220, 230, 244),

@@ -21,6 +21,7 @@ type TreeNode struct {
 	Label    string
 	Icon     rune
 	Dim      bool // draw the row in the muted (disabled) foreground; the selection highlight wins
+	Emphasis bool // mark the row current: theme.StyleTreeCurrent (bold); stays bold when selected, wins over Dim
 	Depth    int
 	Expanded bool
 	Loaded   bool
@@ -394,7 +395,9 @@ func (tv *TreeView) Draw(s tcell.Screen) {
 
 		style := theme.StylePanel()
 		if idx == tv.sel {
-			style = theme.StyleSelected()
+			style = theme.StyleSelected().Bold(node.Emphasis)
+		} else if node.Emphasis {
+			style = theme.StyleTreeCurrent()
 		} else if node.Dim {
 			style = style.Foreground(theme.StyleDisabled().GetForeground())
 		}

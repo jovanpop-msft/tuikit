@@ -70,6 +70,12 @@ func StyleSelected() tcell.Style {
 	return On(active.TreeSelected, active.SelectedText)
 }
 
+// StyleTreeCurrent is a tree row marked current (TreeNode.Emphasis) when not
+// selected.
+func StyleTreeCurrent() tcell.Style {
+	return On(active.PanelBg, active.TreeCurrentText).Bold(true)
+}
+
 // StyleMenuSelected is the highlighted row of a list on a MenuBar ground (menu,
 // dropdown list, panel switcher). Not StyleSelected: Midnight Commander's
 // selection is the same cyan as its menus, so the row would vanish.

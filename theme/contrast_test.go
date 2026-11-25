@@ -48,6 +48,7 @@ var styleFuncs = map[string]func() tcell.Style{
 	"StyleDisabled":        StyleDisabled,
 	"StyleStatusBar":       StyleStatusBar,
 	"StyleSelected":        StyleSelected,
+	"StyleTreeCurrent":     StyleTreeCurrent,
 	"StyleMenuSelected":    StyleMenuSelected,
 	"StyleMenuBarEmphasis": StyleMenuBarEmphasis,
 	"StyleAlert":           StyleAlert,
