@@ -390,6 +390,13 @@ func (g *DataGrid) SetDataPreservingView(columns []string, rows [][]string) {
 // view whose rows grow in place and whose column set changes as new ones
 // appear.
 //
+// Column state follows its column by header text, not its index: a column
+// inserted or removed ahead of a dragged width, an alignment, the sort
+// indicator or the cursor leaves each on the column it was on. A column that
+// is gone takes its state with it, and the cursor moves to the nearest
+// surviving column to its left. A duplicated header pairs its n-th occurrence
+// with the n-th. Rows keep their indices.
+//
 // The selection collapses onto the restored cursor: a Shift-extended block
 // and Ctrl+click marks are dropped. A host that does not know whether its
 // rebuild kept the rows in place (a filter, a re-run query, a resume after
@@ -404,8 +411,9 @@ func (g *DataGrid) SetSourcePreservingView(columns []string, rows RowSource) {
 // appended after the last one.
 //
 // "The same rows" is the contract, so the selection survives too: a
-// Shift-extended block keeps its anchor (both corners clamped into the new
-// shape), and Ctrl+click marks are kept while every marked row still exists.
+// Shift-extended block keeps its anchor (its rows clamped into the new
+// shape; it collapses when a column it spanned is gone or a new one falls
+// inside it), and Ctrl+click marks are kept while every marked row still exists.
 // A live view rebuilt because an event brought a new column wiped a
 // multi-row selection the user was about to copy. Called on rows that did
 // move, the kept selection covers other rows and a copy takes rows the user
@@ -414,7 +422,14 @@ func (g *DataGrid) SetSourceKeepingSelection(columns []string, rows RowSource) {
 	g.setSourcePreserving(columns, rows, true)
 }
 
+// setSourcePreserving carries the column state (dragged widths, alignments,
+// the sort indicator, the cursor's and a block's columns) across the change by
+// column, through columnMap, and the row state (scroll, cursor row, marks) by
+// index. Kept by index, a live view whose new field arrived ahead of an action
+// column moved the action's dragged width and the cursor onto the new field,
+// and a block then copied cells of a column the user never selected.
 func (g *DataGrid) setSourcePreserving(columns []string, rows RowSource, keepSelection bool) {
+	cm := columnMap(g.columns, columns)
 	selRow, selCol := g.SelectedCell()
 	block, anchorRow, anchorCol := g.blockSelecting, g.selAnchorRow, g.selAnchorCol
 	marking, markLo, markHi, markFlips := g.marking, g.markLo, g.markHi, g.markFlips
@@ -423,23 +438,104 @@ func (g *DataGrid) setSourcePreserving(columns []string, rows RowSource, keepSel
 	sortCol, sortDesc := g.sortCol, g.sortDesc
 	aligns := g.aligns
 	g.SetSource(columns, rows)
-	g.sortCol, g.sortDesc = sortCol, sortDesc
-	g.aligns = aligns
-	g.restoreOverrideWidths(widths)
-	g.SetScroll(scrollRow, scrollCol)
-	g.SetSelectedCell(selRow, selCol)
+	if c := mappedCol(cm, sortCol); c >= 0 {
+		g.sortCol, g.sortDesc = c, sortDesc
+	}
+	if aligns != nil {
+		g.aligns = make([]ColumnAlign, len(columns))
+		for i, a := range aligns {
+			if c := mappedCol(cm, i); c >= 0 {
+				g.aligns[c] = a
+			}
+		}
+	}
+	moved := make([]int, len(columns))
+	for i, w := range widths {
+		if c := mappedCol(cm, i); c >= 0 {
+			moved[c] = w
+		}
+	}
+	g.restoreOverrideWidths(moved)
+	g.SetScroll(scrollRow, survivingCol(cm, scrollCol))
+	g.SetSelectedCell(selRow, survivingCol(cm, selCol))
 	if !keepSelection {
 		return
 	}
 	n := g.rows.Len()
-	if block && n > 0 {
+	if block && n > 0 && blockColumnsKept(cm, anchorCol, selCol) {
 		g.selAnchorRow = core.Clamp(anchorRow, 0, n-1)
-		g.selAnchorCol = core.Clamp(anchorCol, 0, max(0, len(g.columns)-1))
+		g.selAnchorCol = mappedCol(cm, anchorCol)
 		g.blockSelecting = g.selRow != g.selAnchorRow || g.selCol != g.selAnchorCol
 	}
 	if marking && marksFit(markHi, markFlips, n) {
 		g.markLo, g.markHi, g.markFlips, g.marking = markLo, markHi, markFlips, true
 	}
+}
+
+// columnMap maps each of old's columns to its index in cur by header text, the
+// n-th occurrence of a name to its n-th occurrence (a result can repeat a
+// name), -1 for one cur lacks. A renamed column is a different column.
+func columnMap(old, cur []string) []int {
+	m := make([]int, len(old))
+	if slices.Equal(old, cur) { // the common case, a host redrawing on every keystroke
+		for i := range m {
+			m[i] = i
+		}
+		return m
+	}
+	at := make(map[string][]int, len(cur))
+	for j, c := range cur {
+		at[c] = append(at[c], j)
+	}
+	for i, c := range old {
+		m[i] = -1
+		if js := at[c]; len(js) > 0 {
+			m[i], at[c] = js[0], js[1:]
+		}
+	}
+	return m
+}
+
+// mappedCol is old column i's index in the new set, -1 when it is gone or i
+// was not a column.
+func mappedCol(cm []int, i int) int {
+	if i < 0 || i >= len(cm) {
+		return -1
+	}
+	return cm[i]
+}
+
+// survivingCol is where a cursor on old column i lands: on that column, or
+// when it is gone on the nearest surviving column to its left, else column 0.
+func survivingCol(cm []int, i int) int {
+	for k := min(i, len(cm)-1); k >= 0; k-- {
+		if cm[k] >= 0 {
+			return cm[k]
+		}
+	}
+	return 0
+}
+
+// blockColumnsKept reports whether a block spanning old columns a..b spans the
+// same columns in the new set: each survives, and no new column falls between
+// them. Otherwise its Copy would leave out a selected column or take cells of
+// one the user never selected, so the block collapses.
+func blockColumnsKept(cm []int, a, b int) bool {
+	lo, hi := min(a, b), max(a, b)
+	nlo, nhi := mappedCol(cm, a), mappedCol(cm, b)
+	if lo < 0 || nlo < 0 || nhi < 0 {
+		return false
+	}
+	nlo, nhi = min(nlo, nhi), max(nlo, nhi)
+	if nhi-nlo != hi-lo {
+		return false
+	}
+	for k := lo; k <= hi; k++ {
+		if c := mappedCol(cm, k); c < nlo || c > nhi {
+			return false
+		}
+	}
+	return true
 }
 
 // marksFit reports whether every row a Ctrl+click selection names (the base
