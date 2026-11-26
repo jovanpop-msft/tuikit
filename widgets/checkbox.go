@@ -90,14 +90,19 @@ func (c *CheckBox) HandleMouse(ev *tcell.EventMouse) bool {
 	if c.press.Release(ev) {
 		return false
 	}
-	if c.disabled || ev.Buttons() != tcell.Button1 {
+	if ev.Buttons() != tcell.Button1 {
+		return false
+	}
+	// Claim on every Button1, as Button does.
+	fresh := c.press.Fresh(ev)
+	if c.disabled {
 		return false
 	}
 	mx, my := ev.Position()
 	if my != c.rect.Y || mx < c.rect.X || mx >= c.rect.X+c.Width() {
 		return false
 	}
-	if c.press.Fresh(ev) {
+	if fresh {
 		c.toggle()
 	}
 	return true

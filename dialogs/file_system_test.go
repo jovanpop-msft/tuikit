@@ -28,6 +28,9 @@ func TestLocalFileSystemExistsReportsPermissionError(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod(dir, 0) does not deny directory traversal on Windows")
+	}
 	dir := t.TempDir()
 	locked := filepath.Join(dir, "locked")
 	if err := os.Mkdir(locked, 0o700); err != nil {

@@ -44,6 +44,32 @@ func TestButtonReleaseRearmsTheLatch(t *testing.T) {
 	}
 }
 
+// TestButtonIgnoresAPressDraggedOntoIt: a press that began elsewhere and
+// drifted onto the button arrives as a resend of a held Button1, and must not
+// click it. Nor may a press on the disabled button fire once it is enabled
+// mid-drag.
+func TestButtonIgnoresAPressDraggedOntoIt(t *testing.T) {
+	clicks := 0
+	b := NewButton("OK", func() { clicks++ })
+	b.SetBounds(10, 5)
+	if b.HandleMouse(tuikittest.Mouse(2, 5, tcell.Button1)) {
+		t.Error("HandleMouse(press outside) = true, want false")
+	}
+	b.HandleMouse(tuikittest.Mouse(11, 5, tcell.Button1))
+	if clicks != 0 {
+		t.Errorf("OnClick fired %d times for a press dragged onto the button, want 0", clicks)
+	}
+
+	b.HandleMouse(tuikittest.Mouse(11, 5, tcell.ButtonNone))
+	b.SetEnabled(false)
+	b.HandleMouse(tuikittest.Mouse(11, 5, tcell.Button1))
+	b.SetEnabled(true)
+	b.HandleMouse(tuikittest.Mouse(12, 5, tcell.Button1))
+	if clicks != 0 {
+		t.Errorf("OnClick fired %d times for a press held across SetEnabled(true), want 0", clicks)
+	}
+}
+
 // TestButtonReleaseIsNotConsumed pins that a release returns false. A host
 // broadcasts every release to every latch-bearing widget so their latches
 // reset; a widget that claimed the

@@ -78,15 +78,19 @@ func (b *Button) HandleMouse(ev *tcell.EventMouse) bool {
 	if b.press.Release(ev) {
 		return false
 	}
-	if b.disabled || ev.Buttons() != tcell.Button1 {
+	if ev.Buttons() != tcell.Button1 {
+		return false
+	}
+	// Claim on every Button1, hit or not, disabled or not: a press elsewhere
+	// dragged onto the button is a resend of a held press, not a click.
+	fresh := b.press.Fresh(ev)
+	if b.disabled {
 		return false
 	}
 	mx, my := ev.Position()
 	if my == b.rect.Y && mx >= b.rect.X && mx < b.rect.X+b.Width() {
-		if b.press.Fresh(ev) {
-			if b.OnClick != nil {
-				b.OnClick()
-			}
+		if fresh && b.OnClick != nil {
+			b.OnClick()
 		}
 		return true
 	}
