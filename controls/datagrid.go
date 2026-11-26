@@ -82,8 +82,12 @@ const minResizeWidth = 4
 
 // DataGrid renders a scrollable, column-aligned tabular dataset.
 type DataGrid struct {
-	rect      core.Rect
-	columns   []string
+	rect    core.Rect
+	columns []string
+	// colKeys is each column's identity as a keyed setter gave it (see
+	// SetSourcePreservingViewKeyed), nil when the columns are known by header
+	// text alone. Cleared with the columns it describes (resetView).
+	colKeys   []string
 	rows      RowSource
 	colWidths []int
 	// naturalWidths is each column's measured width before the clamp, overrides
@@ -349,6 +353,7 @@ func (g *DataGrid) SetSource(columns []string, rows RowSource) {
 // the old one — SetSource's and SetError's shared reset.
 func (g *DataGrid) resetView(columns []string, rows RowSource, errorMode bool) {
 	g.columns = columns
+	g.colKeys = nil
 	g.rows = rows
 	g.errorMode = errorMode
 	g.selRow, g.selCol, g.scrollRow, g.scrollCol = 0, 0, 0, 0
@@ -403,7 +408,23 @@ func (g *DataGrid) SetDataPreservingView(columns []string, rows [][]string) {
 // eviction) then cannot copy rows the user never selected. A host that knows
 // the rows are identical uses SetSourceKeepingSelection.
 func (g *DataGrid) SetSourcePreservingView(columns []string, rows RowSource) {
-	g.setSourcePreserving(columns, rows, false)
+	g.setSourcePreserving(columns, nil, rows, false)
+}
+
+// SetSourcePreservingViewKeyed is SetSourcePreservingView with each column's
+// identity given apart from its header: keys[i] names columns[i], and column
+// state follows the key, so a column whose header changes keeps its state. A
+// host whose header text depends on the rest of the column set needs it — a
+// live view that suffixes a column's header once another of the same name
+// appears, where by header text the old header went to the newcomer and the
+// renamed column lost its dragged width.
+//
+// State follows keys only when both the previous set and this one are keyed;
+// otherwise it follows header text, as the unkeyed setters do. keys must be as
+// long as columns, or they are ignored. Keys are compared like headers: a
+// duplicated key pairs its n-th occurrence with the n-th.
+func (g *DataGrid) SetSourcePreservingViewKeyed(columns, keys []string, rows RowSource) {
+	g.setSourcePreserving(columns, keys, rows, false)
 }
 
 // SetSourceKeepingSelection is SetSourcePreservingView for a rebuild that
@@ -419,7 +440,13 @@ func (g *DataGrid) SetSourcePreservingView(columns []string, rows RowSource) {
 // move, the kept selection covers other rows and a copy takes rows the user
 // never picked.
 func (g *DataGrid) SetSourceKeepingSelection(columns []string, rows RowSource) {
-	g.setSourcePreserving(columns, rows, true)
+	g.setSourcePreserving(columns, nil, rows, true)
+}
+
+// SetSourceKeepingSelectionKeyed is SetSourceKeepingSelection with column
+// keys, as SetSourcePreservingViewKeyed takes them.
+func (g *DataGrid) SetSourceKeepingSelectionKeyed(columns, keys []string, rows RowSource) {
+	g.setSourcePreserving(columns, keys, rows, true)
 }
 
 // setSourcePreserving carries the column state (dragged widths, alignments,
@@ -428,8 +455,24 @@ func (g *DataGrid) SetSourceKeepingSelection(columns []string, rows RowSource) {
 // index. Kept by index, a live view whose new field arrived ahead of an action
 // column moved the action's dragged width and the cursor onto the new field,
 // and a block then copied cells of a column the user never selected.
-func (g *DataGrid) setSourcePreserving(columns []string, rows RowSource, keepSelection bool) {
-	cm := columnMap(g.columns, columns)
+//
+// keys, when non-nil and as long as columns, are the columns' identities; the
+// map uses them when the old set was keyed too, header text otherwise. Unkeyed
+// with the same headers as before (SetSourceReordered), the old keys carry
+// over: the columns are the same ones.
+func (g *DataGrid) setSourcePreserving(columns, keys []string, rows RowSource, keepSelection bool) {
+	if len(keys) != len(columns) {
+		keys = nil
+	}
+	if keys == nil && slices.Equal(columns, g.columns) {
+		keys = g.colKeys
+	}
+	var cm []int
+	if keys != nil && g.colKeys != nil {
+		cm = columnMap(g.colKeys, keys)
+	} else {
+		cm = columnMap(g.columns, columns)
+	}
 	selRow, selCol := g.SelectedCell()
 	block, anchorRow, anchorCol := g.blockSelecting, g.selAnchorRow, g.selAnchorCol
 	marking, markLo, markHi, markFlips := g.marking, g.markLo, g.markHi, g.markFlips
@@ -438,6 +481,7 @@ func (g *DataGrid) setSourcePreserving(columns []string, rows RowSource, keepSel
 	sortCol, sortDesc := g.sortCol, g.sortDesc
 	aligns := g.aligns
 	g.SetSource(columns, rows)
+	g.colKeys = slices.Clone(keys)
 	if c := mappedCol(cm, sortCol); c >= 0 {
 		g.sortCol, g.sortDesc = c, sortDesc
 	}
@@ -472,9 +516,10 @@ func (g *DataGrid) setSourcePreserving(columns []string, rows RowSource, keepSel
 	}
 }
 
-// columnMap maps each of old's columns to its index in cur by header text, the
-// n-th occurrence of a name to its n-th occurrence (a result can repeat a
-// name), -1 for one cur lacks. A renamed column is a different column.
+// columnMap maps each of old's columns to its index in cur by header text (or
+// by key, handed keys), the n-th occurrence of a name to its n-th occurrence (a
+// result can repeat a name), -1 for one cur lacks. A renamed column is a
+// different column.
 func columnMap(old, cur []string) []int {
 	m := make([]int, len(old))
 	if slices.Equal(old, cur) { // the common case, a host redrawing on every keystroke

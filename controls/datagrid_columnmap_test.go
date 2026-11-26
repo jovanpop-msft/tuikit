@@ -171,3 +171,80 @@ func TestColumnMap(t *testing.T) {
 		}
 	}
 }
+
+// keyedColumnMapGrid is columnMapGrid with the columns installed under keys,
+// the column state left where columnMapGrid put it.
+func keyedColumnMapGrid(cols, keys []string, dragW, anchor, cursor int) *DataGrid {
+	g := columnMapGrid(cols, dragW, anchor, cursor)
+	g.SetSourceKeepingSelectionKeyed(cols, keys, columnRows(cols))
+	return g
+}
+
+// A keyed column whose header changes keeps its state, and the newcomer that
+// took its old header starts at defaults: the XEvent viewer's action renamed
+// "database_id (action)" once a database_id field arrived, whose dragged width
+// went to the field when state followed header text.
+func TestPreservingViewKeyedFollowsRenamedHeader(t *testing.T) {
+	old := []string{"name", "database_id"}
+	oldKeys := []string{"name", "action:database_id"}
+	cur := []string{"name", "database_id (action)", "database_id"}
+	curKeys := []string{"name", "action:database_id", "field:database_id"}
+
+	g := keyedColumnMapGrid(old, oldKeys, 1, 1, 1)
+	g.SetSourcePreservingViewKeyed(cur, curKeys, columnRows(cur))
+	if _, col := g.SelectedCell(); col != 1 {
+		t.Errorf("cursor column = %d, want 1 (the action)", col)
+	}
+	wantColumnState(t, g, "keyed rename", 1, 1, 1)
+
+	g = keyedColumnMapGrid(old, oldKeys, 1, 0, 1) // block name..action
+	g.SetSourceKeepingSelectionKeyed(cur, curKeys, columnRows(cur))
+	wantColumnState(t, g, "keyed rename, block kept", 1, 0, 1)
+
+	// Unkeyed, the same change hands the action's old header, and so its
+	// state, to the field.
+	g = columnMapGrid(old, 1, 1, 1)
+	g.SetSourcePreservingView(cur, columnRows(cur))
+	wantColumnState(t, g, "unkeyed rename", 2, 2, 2)
+}
+
+// Keys apply only between two keyed sets; a keyed set after an unkeyed one,
+// or keys of the wrong length, map by header text.
+func TestPreservingViewKeyedFallsBackToHeaders(t *testing.T) {
+	old := []string{"a", "b", "c"}
+	cur := []string{"a", "x", "b", "c"}
+	g := columnMapGrid(old, 1, 1, 1)
+	g.SetSourcePreservingViewKeyed(cur, []string{"ka", "kx", "kb", "kc"}, columnRows(cur))
+	wantColumnState(t, g, "unkeyed to keyed", 2, 2, 2)
+
+	g = keyedColumnMapGrid(old, []string{"ka", "kb", "kc"}, 1, 1, 1)
+	g.SetSourcePreservingViewKeyed(cur, []string{"ka"}, columnRows(cur))
+	wantColumnState(t, g, "short keys", 2, 2, 2)
+	if g.colKeys != nil {
+		t.Errorf("colKeys = %v after ignored keys, want nil", g.colKeys)
+	}
+
+	// An unkeyed setter forgets the keys, so the next keyed one maps by header.
+	g = keyedColumnMapGrid(old, []string{"ka", "kb", "kc"}, 1, 1, 1)
+	g.SetSource(old, columnRows(old))
+	if g.colKeys != nil {
+		t.Errorf("colKeys = %v after SetSource, want nil", g.colKeys)
+	}
+}
+
+// A re-sort keeps the headers, so it keeps the keys: a rename after it still
+// follows the key.
+func TestSetSourceReorderedKeepsColumnKeys(t *testing.T) {
+	old := []string{"name", "database_id"}
+	oldKeys := []string{"name", "action:database_id"}
+	g := keyedColumnMapGrid(old, oldKeys, 1, 1, 1)
+	g.SetSourceReordered(old, PermutedSource{Src: columnRows(old), Perm: []int{4, 3, 2, 1, 0}}, nil, []int{4, 3, 2, 1, 0})
+	if !slices.Equal(g.colKeys, oldKeys) {
+		t.Fatalf("colKeys = %v after a re-sort, want %v", g.colKeys, oldKeys)
+	}
+	cur := []string{"name", "database_id (action)", "database_id"}
+	g.SetSourcePreservingViewKeyed(cur, []string{"name", "action:database_id", "field:database_id"}, columnRows(cur))
+	if w := g.ColumnWidthOverrides(); w[1] != 40 || w[2] != 0 {
+		t.Errorf("overrides = %v, want the action's 40 on column 1", w)
+	}
+}
