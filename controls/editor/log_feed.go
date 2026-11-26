@@ -28,10 +28,14 @@ import (
 // Max: trimming to Max lines let one multi-line record push older records out
 // of an open view (cutting the oldest mid-text) that Rebuild then brought back.
 type LogFeed struct {
-	lines   []string // newest first, at most max
-	rows    []int    // document lines each of lines takes, parallel to lines; nil when uncapped
-	pending []string // recorded since the last Sync/Rebuild, newest first, at most max
-	max     int
+	// Stored oldest first so Record appends and evicts from the front in
+	// amortized O(1) (a key trace records once per key); every reader
+	// reverses to the newest-first order the API speaks.
+	lines    []string // oldest first, at most max
+	rows     []int    // document lines each of lines takes, parallel to lines; nil when uncapped
+	rowTotal int      // sum of rows
+	pending  []string // recorded since the last Sync/Rebuild, oldest first, at most max
+	max      int
 }
 
 // NewLogFeed returns an empty feed that keeps at most max lines (max <= 0
@@ -50,19 +54,40 @@ func NewLogFeed(max int) *LogFeed {
 // keep a line of an evicted record that Rebuild doesn't show.
 func (f *LogFeed) Record(line string) {
 	line = normalizeEOL(line)
-	f.lines = prepend(f.lines, line, f.max)
+	f.lines = push(f.lines, line, f.max)
 	if f.max > 0 { // uncapped, keepLines is 0 and rows is never read
-		f.rows = prepend(f.rows, docLines(line), f.max)
+		n := docLines(line)
+		f.rowTotal += n
+		if len(f.rows) == f.max {
+			f.rowTotal -= f.rows[0]
+		}
+		f.rows = push(f.rows, n, f.max)
 	}
-	f.pending = prepend(f.pending, line, f.max)
+	f.pending = push(f.pending, line, f.max)
 }
 
-func prepend[T any](s []T, v T, max int) []T {
-	s = append([]T{v}, s...)
-	if max > 0 && len(s) > max {
-		s = s[:max]
+// push appends v to the oldest-first s, dropping the oldest beyond max.
+// Reslicing off the front leaves the dropped slot to the next append's
+// reallocation, which copies only the live elements: amortized O(1).
+func push[T any](s []T, v T, max int) []T {
+	if max > 0 && len(s) >= max {
+		var zero T
+		s[0] = zero // release a dropped string before the reallocation does
+		s = s[len(s)-max+1:]
 	}
-	return s
+	return append(s, v)
+}
+
+// joinNewestFirst joins the oldest-first lines newest first, as the editor
+// shows them.
+func joinNewestFirst(lines []string) string {
+	return strings.Join(newestFirst(lines), "\n")
+}
+
+func newestFirst(lines []string) []string {
+	out := slices.Clone(lines)
+	slices.Reverse(out)
+	return out
 }
 
 // docLines counts the document lines an Editor splits line into, line
@@ -79,7 +104,7 @@ func (f *LogFeed) Len() int { return len(f.lines) }
 func (f *LogFeed) Max() int { return f.max }
 
 // Lines returns a copy of the retained lines, newest first.
-func (f *LogFeed) Lines() []string { return slices.Clone(f.lines) }
+func (f *LogFeed) Lines() []string { return newestFirst(f.lines) }
 
 // Dirty reports whether lines were recorded since the last sync.
 func (f *LogFeed) Dirty() bool { return len(f.pending) > 0 }
@@ -92,12 +117,10 @@ func (f *LogFeed) TakePending() (text string, keepLines int, ok bool) {
 	if len(f.pending) == 0 {
 		return "", 0, false
 	}
-	text = strings.Join(f.pending, "\n")
+	text = joinNewestFirst(f.pending)
 	f.pending = nil
 	if f.max > 0 {
-		for _, n := range f.rows {
-			keepLines += n
-		}
+		keepLines = f.rowTotal
 	}
 	return text, keepLines, true
 }
@@ -106,7 +129,7 @@ func (f *LogFeed) TakePending() (text string, keepLines int, ok bool) {
 // synced.
 func (f *LogFeed) TakeAll() string {
 	f.pending = nil
-	return strings.Join(f.lines, "\n")
+	return joinNewestFirst(f.lines)
 }
 
 // Sync prepends the lines recorded since the last sync to e, trimming e to
@@ -130,5 +153,6 @@ func (f *LogFeed) Rebuild(e *Editor) {
 func (f *LogFeed) Reset() {
 	f.lines = nil
 	f.rows = nil
+	f.rowTotal = 0
 	f.pending = nil
 }
