@@ -4,6 +4,21 @@ All notable changes to tuikit are documented here, newest first, from
 `v0.1.0` onward. `RELEASE.md` carries the current release only, as a short
 summary of the entry below it.
 
+## Unreleased
+
+### Migrating
+
+- `DataGrid.SetSourcePreservingView`, `SetDataPreservingView`,
+  `SetSourceKeepingSelection` and `SetSourceReordered` carry column state by
+  header text, not by index: dragged widths, alignments, the sort indicator,
+  the cursor's column and a block's columns stay on the column they were on
+  when one is inserted or removed ahead of it (the n-th occurrence of a
+  repeated header pairs with the n-th). A renamed column starts at its
+  defaults, and a column that is gone takes its state with it: the cursor
+  moves to the nearest surviving column to its left, and a block spanning a
+  removed or newly inserted column collapses. A host that guarded a changed
+  column set with `SetSource` can drop the guard. Row state is unchanged.
+
 ## v0.1.0
 
 The first release with a stable shape for the dialog stack. Dialogs no longer

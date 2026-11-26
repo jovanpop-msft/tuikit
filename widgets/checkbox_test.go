@@ -48,6 +48,29 @@ func TestCheckBoxReleaseRearmsTheLatch(t *testing.T) {
 	}
 }
 
+// TestCheckBoxIgnoresAPressDraggedOntoIt — see the Button test of the same
+// name.
+func TestCheckBoxIgnoresAPressDraggedOntoIt(t *testing.T) {
+	c := NewCheckBox("Encrypt")
+	c.SetBounds(4, 2)
+	if c.HandleMouse(tuikittest.Mouse(30, 2, tcell.Button1)) {
+		t.Error("HandleMouse(press outside) = true, want false")
+	}
+	c.HandleMouse(tuikittest.Mouse(5, 2, tcell.Button1))
+	if c.Checked() {
+		t.Error("Checked() = true after a press dragged onto the checkbox, want false")
+	}
+
+	c.HandleMouse(tuikittest.Mouse(5, 2, tcell.ButtonNone))
+	c.SetEnabled(false)
+	c.HandleMouse(tuikittest.Mouse(5, 2, tcell.Button1))
+	c.SetEnabled(true)
+	c.HandleMouse(tuikittest.Mouse(6, 2, tcell.Button1))
+	if c.Checked() {
+		t.Error("Checked() = true after a press held across SetEnabled(true), want false")
+	}
+}
+
 // TestCheckBoxReleaseIsNotConsumed — see the Button test of the same name for
 // why a release must keep propagating.
 func TestCheckBoxReleaseIsNotConsumed(t *testing.T) {

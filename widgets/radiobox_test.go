@@ -66,6 +66,30 @@ func TestDisabledRadioBoxRefusesInput(t *testing.T) {
 	}
 }
 
+// TestRadioBoxIgnoresAPressDraggedOntoIt — see the Button test of the same
+// name.
+func TestRadioBoxIgnoresAPressDraggedOntoIt(t *testing.T) {
+	r := NewRadioBox("Backup Type:", []string{"Full", "Differential"})
+	r.SetBounds(4, 2)
+	// Row 2 is the label; "Differential" is row 4.
+	if r.HandleMouse(tuikittest.Mouse(40, 4, tcell.Button1)) {
+		t.Error("HandleMouse(press outside) = true, want false")
+	}
+	r.HandleMouse(tuikittest.Mouse(5, 4, tcell.Button1))
+	if got := r.Selected(); got != 0 {
+		t.Errorf("Selected() = %d after a press dragged onto an option, want 0", got)
+	}
+
+	r.HandleMouse(tuikittest.Mouse(5, 4, tcell.ButtonNone))
+	r.SetEnabled(false)
+	r.HandleMouse(tuikittest.Mouse(5, 4, tcell.Button1))
+	r.SetEnabled(true)
+	r.HandleMouse(tuikittest.Mouse(6, 4, tcell.Button1))
+	if got := r.Selected(); got != 0 {
+		t.Errorf("Selected() = %d after a press held across SetEnabled(true), want 0", got)
+	}
+}
+
 // One greyed option leaves the rest live: arrows step over it, a boundary
 // with only greyed options beyond it falls through like the real edge, a
 // click on it is refused, and SetSelected still reaches it (the host pins).

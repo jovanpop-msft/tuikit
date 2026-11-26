@@ -190,7 +190,12 @@ func (r *RadioBox) HandleMouse(ev *tcell.EventMouse) bool {
 	if r.press.Release(ev) {
 		return false
 	}
-	if r.disabled || ev.Buttons() != tcell.Button1 {
+	if ev.Buttons() != tcell.Button1 {
+		return false
+	}
+	// Claim on every Button1, as Button does.
+	fresh := r.press.Fresh(ev)
+	if r.disabled {
 		return false
 	}
 	mx, my := ev.Position()
@@ -201,7 +206,7 @@ func (r *RadioBox) HandleMouse(ev *tcell.EventMouse) bool {
 			if !r.OptionEnabled(i) {
 				return false
 			}
-			if r.press.Fresh(ev) {
+			if fresh {
 				r.pick(i)
 			}
 			return true

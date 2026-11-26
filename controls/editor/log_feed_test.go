@@ -3,6 +3,7 @@ package editor
 import (
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -144,6 +145,16 @@ func TestLogFeedTakePendingKeepLines(t *testing.T) {
 	f.Record("d\r\ne\nf")
 	if text, keep, ok := f.TakePending(); !ok || keep != 4 || text != "d\ne\nf\nc" {
 		t.Fatalf("TakePending = %q, %d, %v; want the two newest records and 4 lines", text, keep, ok)
+	}
+	// Many evictions: the running total keepLines comes from must still be the
+	// rows of exactly the retained records.
+	h := NewLogFeed(3)
+	for i := range 1000 {
+		h.Record(strings.Repeat("x\n", i%4) + "end")
+	}
+	// Retained: i = 997, 998, 999 → 2, 3, 4 lines.
+	if _, keep, _ := h.TakePending(); keep != 9 || h.Len() != 3 {
+		t.Fatalf("after 1000 records keepLines = %d, Len = %d; want 9, 3", keep, h.Len())
 	}
 	g := NewLogFeed(0)
 	g.Record("a\nb")
